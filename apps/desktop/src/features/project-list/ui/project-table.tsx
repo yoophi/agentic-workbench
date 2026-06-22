@@ -1,0 +1,94 @@
+import { ExternalLinkIcon, PencilIcon, Trash2Icon } from "lucide-react";
+
+import type { Project } from "@/entities/project/model/types";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+type ProjectTableProps = {
+  projects: Project[];
+  onSelectProject: (project: Project) => void;
+  onEditProject: (project: Project) => void;
+  onDeleteProject: (project: Project) => void;
+};
+
+export function ProjectTable({
+  projects,
+  onSelectProject,
+  onEditProject,
+  onDeleteProject,
+}: ProjectTableProps) {
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>이름</TableHead>
+            <TableHead>작업 디렉토리</TableHead>
+            <TableHead>설명</TableHead>
+            <TableHead className="w-36 text-right">작업</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {projects.map((project) => (
+            <TableRow key={project.id}>
+              <TableCell>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto justify-start p-0 font-medium"
+                  onClick={() => onSelectProject(project)}
+                >
+                  {project.name}
+                </Button>
+              </TableCell>
+              <TableCell className="max-w-xs truncate font-mono text-xs">
+                {project.workingDirectory}
+              </TableCell>
+              <TableCell className="max-w-sm truncate text-muted-foreground">
+                {project.description || "설명 없음"}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onSelectProject(project)}
+                    aria-label={`${project.name} 상세`}
+                  >
+                    <ExternalLinkIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onEditProject(project)}
+                    aria-label={`${project.name} 수정`}
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onDeleteProject(project)}
+                    aria-label={`${project.name} 삭제`}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
