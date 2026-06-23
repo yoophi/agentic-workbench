@@ -40,7 +40,7 @@
 - 실제 Tauri window/tab 생성, macOS tab grouping, focus 재사용은 native runtime에서 수동 확인이 필요하다.
 - permission request round-trip은 broker 단위 테스트와 frontend 타입 검증은 있지만, 실제 ACP agent가 permission 요청을 보내는 end-to-end 화면 검증은 아직 없다.
 - login shell PATH 조회는 timeout을 갖지만, Finder/Launchpad에서 실행한 packaged 앱 환경에서 실제 `codex`, `node`, `npx` resolution이 되는지는 수동 smoke test가 필요하다.
-- Tauri bundle/icon 변경이 기능 PR에 함께 들어와 있어 review 범위가 넓고, icon asset 생성 의도와 품질 검증이 분리되어 있지 않다.
+- Tauri bundle/icon 변경은 현재 PR에 유지하되, source icon과 Tauri icon 재생성 절차를 문서화했다.
 
 ## 남은 작업
 
@@ -56,7 +56,6 @@
   - allow/reject 선택 후 dialog close
   - 선택 결과가 agent에 전달되어 run이 계속되거나 중단되는지
   - 이미 완료/취소된 run의 permission waiter가 정리되는지
-- bundle/icon 변경을 별도 PR로 분리할지, 현재 PR에 유지한다면 icon asset 출처와 생성 방법을 문서화한다.
 - native 변경이 있으므로 rebase 후 실제 앱을 다시 실행하고 smoke test를 수행한다.
 
 ## 검증 현황
@@ -74,6 +73,7 @@
 - permission dialog는 응답 선택 직후 optimistic하게 닫히며, command 실패 시 다시 열릴 수 있도록 answered set에서 제거한다.
 - `dangerouslySkipAllPermissions` 선택 시 확인 dialog를 거치도록 했다.
 - login shell PATH 조회는 2초 timeout을 둬 느린 shell init에 무기한 막히지 않도록 했다.
+- icon asset은 `apps/desktop/src-tauri/icons/README.md`에 source PNG와 `tauri icon` 재생성 절차를 문서화했다.
 - 실제 Tauri multi-window/tab, permission request round-trip, packaged/Finder 실행 PATH 동작은 아직 수동 검증이 필요하다.
 
 ## 참고 변경 파일
