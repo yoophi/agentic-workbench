@@ -35,8 +35,12 @@ fn focus_if_open(app: &AppHandle, label: &str) -> bool {
 /// worktree path는 route segment가 아니라 query string에 넣어 `/`, `#`, `%` 같은
 /// 경로 문자가 router matching에 영향을 주지 않도록 한다.
 fn session_url(project_id: &str, worktree_path: &str) -> WebviewUrl {
+    WebviewUrl::App(format!("index.html#{}", session_route(project_id, worktree_path)).into())
+}
+
+fn session_route(project_id: &str, worktree_path: &str) -> String {
     let encoded_path = utf8_percent_encode(worktree_path, NON_ALPHANUMERIC).to_string();
-    WebviewUrl::App(format!("index.html#/session/{project_id}?worktreePath={encoded_path}").into())
+    format!("/session/{project_id}?worktreePath={encoded_path}")
 }
 
 /// worktree 세션을 새 창 또는 새 탭으로 연다. 이미 열려 있으면 그 창을 포커스한다.
@@ -138,4 +142,33 @@ fn open_as_tab(
     receiver
         .recv_timeout(Duration::from_secs(5))
         .map_err(|_| "timed out while creating session tab".to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{session_label, session_route};
+
+    #[test]
+    fn session_route_keeps_worktree_path_out_of_route_segments() {
+        let route = session_route("project-1", "/tmp/작업 tree/a#b%c");
+
+        assert_eq!(
+            route,
+            "/session/project-1?worktreePath=%2Ftmp%2F%EC%9E%91%EC%97%85%20tree%2Fa%23b%25c"
+        );
+    }
+
+    #[test]
+    fn session_label_is_stable_and_route_safe() {
+        let first = session_label("project-1", "/tmp/worktree");
+        let second = session_label("project-1", "/tmp/worktree");
+
+        assert_eq!(first, second);
+        assert!(first.starts_with("session-"));
+        assert!(
+            first
+                .chars()
+                .all(|char| char.is_ascii_alphanumeric() || char == '-')
+        );
+    }
 }
