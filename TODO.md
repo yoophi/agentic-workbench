@@ -1,97 +1,95 @@
-# feat/support-multi-window Handoff
+# PR #7 Review TODO
 
-## 목표
+## 개요
 
-현재 PR #7의 목표는 worktree session을 현재 창뿐 아니라 별도 Tauri window 또는 macOS native tab으로 열 수 있게 하고, agent 실행 흐름에 permission mode와 permission 응답 UI를 연결하는 것이다.
+현재 PR은 worktree session을 현재 창, 별도 Tauri window, macOS native tab으로 열 수 있게 하고, ACP agent 실행 흐름에 permission mode와 permission 응답 UI를 연결한다.
 
-핵심 사용 흐름은 다음과 같다.
+핵심 변경 범위는 다음과 같다.
 
-- 사용자가 worktree 목록에서 작업 화면 열기 버튼을 누르면 `새 창`, `새 탭`, `현재 창` 중 하나를 선택할 수 있다.
-- 새 창/탭으로 열린 session은 `/session/:projectId/:worktreePath` standalone route를 사용해 앱 상단 navigation 없이 작업 화면만 표시한다.
-- 각 session window에서 시작한 agent run 이벤트는 해당 window에만 전달되어 다른 session 화면을 오염시키지 않아야 한다.
-- agent 실행 전 permission mode를 선택하고, ACP agent가 permission 요청을 보내면 dialog에서 승인/거절 옵션을 선택해 run을 계속 진행할 수 있어야 한다.
-- Finder/Launchpad에서 실행한 GUI 앱에서도 agent/terminal command가 사용자의 login shell PATH를 반영해 `codex`, `node`, `npx` 등을 찾을 수 있어야 한다.
+- worktree 목록의 실행 버튼을 dropdown으로 바꿔 `새 창`, `새 탭`, `현재 창` 진입 경로를 제공한다.
+- standalone session route를 추가해 새 window/tab에서 navigation shell 없이 작업 화면만 표시한다.
+- Tauri backend에 deterministic session window label과 window/tab 생성 adapter를 추가한다.
+- agent run event를 target window label로 emit해 session window 간 이벤트 섞임을 줄인다.
+- run request에 permission mode를 추가하고 ACP `session/request_permission`을 dialog 응답으로 왕복시킨다.
+- GUI 실행 환경에서도 agent/terminal command가 login shell PATH를 반영하도록 command resolution을 보강한다.
+- Tauri bundle/icon 설정을 추가하고 debug DevTools 자동 open을 opt-in으로 바꾼다.
 
-## 수행한 작업
+## 리뷰 결과
 
-- `PermissionMode`를 frontend/backend run request 모델에 추가했다.
-- `AgentRunPanel`에 permission mode selector를 추가하고 `startAgentRun` 요청에 `permissionMode`를 전달하도록 했다.
-- ACP permission 요청을 `RunEvent::Permission`으로 변환하고, pending permission을 dialog로 보여준 뒤 `respond_agent_permission` command로 응답하도록 연결했다.
-- `PermissionBroker`를 `AppState`에 추가해 permission waiter를 run 단위로 관리하도록 했다.
-- agent run event sink를 target window label 기반 `emit_to` 방식으로 바꿔 multi-window 환경에서 이벤트 전달 범위를 좁혔다.
-- `open_worktree_window` Tauri command와 `window_manager`를 추가해 worktree session을 새 window 또는 macOS tab으로 열 수 있게 했다.
-- worktree 목록의 단일 agent 실행 버튼을 dropdown menu로 바꿔 `새 창에서 열기`, `새 탭에서 열기`, `현재 창에서 열기`를 선택할 수 있게 했다.
-- `/session/:projectId/:worktreePath` standalone route를 추가하고 session window에서는 full-width layout을 사용하도록 했다.
-- Tauri bundle 설정과 icon asset을 추가했다.
-- agent process와 terminal command 실행 시 login shell PATH를 조회해 `PATH`를 보강하고, 실행 파일을 가능한 경우 절대경로로 resolve하도록 했다.
-- PR #6 이후 `origin/main` 위로 rebase하면서 prompt queue, usage bar, fixed-height session layout, `scrollHeader` 구조와 permission/multi-window 변경을 결합했다.
-- debug build에서 DevTools가 항상 자동으로 열려 smoke test 화면을 가리던 동작을 `ACP_OPEN_DEVTOOLS` opt-in으로 변경했다.
+현재까지 확인한 범위에서 merge를 막을 만한 기능 결함은 발견하지 못했다.
 
-## 잘 된 점
+잘 된 점:
 
-- window별 event routing을 backend sink에서 처리해 frontend의 active run filter만으로는 막기 어려운 multi-window event 섞임을 구조적으로 줄였다.
-- 새 창과 새 탭 열기 기능이 Tauri adapter인 `window_manager`에 분리되어 있어 UI route 코드가 native window 생성 세부사항을 직접 알지 않는다.
-- 같은 project/worktree 조합에 deterministic session label을 사용해 중복 window를 무한히 만드는 대신 이미 열린 window를 focus하는 정책이 명확하다.
-- permission mode 선택이 run 시작 요청에 명시적으로 들어가고, agent가 지원하지 않는 mode는 diagnostic으로 남기고 기본 동작을 유지하는 방향이라 실패 범위가 작다.
-- GUI 앱 PATH 문제를 agent process와 terminal command 양쪽에 적용해 실제 desktop 실행 환경에서 흔한 command-not-found 문제를 줄인다.
-- rebase 후 PR #6의 queue/usage/fixed layout 개선을 잃지 않고 PR #7 기능과 결합했다.
+- window routing 책임이 backend event sink와 window manager 쪽에 있어 frontend 상태 필터만으로 multi-window isolation을 떠안지 않는다.
+- session route는 `worktreePath`를 query string으로 넘겨 `/`, 공백, 한글, `#`, `%` 같은 path 문자를 안정적으로 다룬다.
+- permission 응답은 run id와 owner window를 함께 확인해 다른 run/window의 waiter를 잘못 해제하지 않도록 좁혀져 있다.
+- `dangerouslySkipAllPermissions`는 확인 dialog를 거치도록 되어 있어 실수로 높은 권한 mode를 선택하는 위험이 줄었다.
+- smoke 검증용 ACP agent가 opt-in catalog로 추가되어 실제 permission dialog round-trip을 재현할 수 있다.
 
-## 부족한 점
+주의할 점:
 
-- 실제 Tauri window/tab 생성, macOS tab grouping, focus 재사용은 native runtime에서 수동 확인이 필요하다.
-- permission request round-trip은 broker 단위 테스트와 frontend 타입 검증은 있지만, 실제 ACP agent가 permission 요청을 보내는 end-to-end 화면 검증은 아직 없다.
-- login shell PATH 조회는 timeout을 갖지만, Finder/Launchpad에서 실행한 packaged 앱 환경에서 실제 `codex`, `node`, `npx` resolution이 되는지는 수동 smoke test가 필요하다.
-- Tauri bundle/icon 변경은 현재 PR에 유지하되, source icon과 Tauri icon 재생성 절차를 문서화했다.
+- `ACP_AGENT_CATALOG_PATH` smoke catalog는 root `pnpm run tauri:dev`의 Turborepo 경유 실행에서는 Rust 앱까지 전달되지 않았다. smoke 검증 시에는 `apps/desktop`에서 직접 `ACP_AGENT_CATALOG_PATH=... pnpm tauri dev`로 실행해야 했다.
+- smoke catalog command는 repo root worktree에서 실행하는 검증용이다. 다른 worktree에서 해당 catalog를 쓰면 상대 경로 때문에 script를 찾지 못할 수 있다.
+- packaged 앱을 Finder/Launchpad에서 실행했을 때 login shell PATH 보강이 실제 `codex`, `node`, `npx` resolution까지 해결하는지는 아직 별도 수동 검증이 필요하다.
 
-## 남은 작업
-
-- 같은 worktree를 새 창/탭으로 다시 열 때 기존 session window가 focus되는지 확인한다.
-- 서로 다른 두 session window에서 agent run을 동시에 시작해 이벤트, usage, permission dialog, cancel 상태가 서로 섞이지 않는지 확인한다.
-- permission 요청이 필요한 agent/tool 호출을 실제로 실행해 다음 상태를 확인한다.
-  - permission dialog 표시
-  - allow/reject 선택 후 dialog close
-  - 선택 결과가 agent에 전달되어 run이 계속되거나 중단되는지
-  - 이미 완료/취소된 run의 permission waiter가 정리되는지
-- native 변경이 있으므로 rebase 후 실제 앱을 다시 실행하고 smoke test를 수행한다.
-
-## 검증 현황
+## 완료한 검증
 
 - `pnpm run check-types` 통과.
 - `pnpm run test` 통과.
+- `pnpm run build` 통과.
 - `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml` 통과.
-- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml permission -- --nocapture` 통과.
-- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml window_manager -- --nocapture` 통과.
+- `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- --nocapture` 통과.
+- `node --check apps/desktop/scripts/acp-permission-smoke-agent.mjs` 통과.
+- permission smoke agent JSON-RPC harness 통과: `initialize`, `session/new`, `session/prompt`, `session/request_permission` 응답까지 완료.
 - Tauri dev 앱을 native rebuild와 함께 재실행했다.
-- `ACP_OPEN_DEVTOOLS`를 설정하지 않은 dev 실행에서 DevTools가 자동으로 열리지 않는 것을 실제 Tauri 창으로 확인했다.
-- 실제 Tauri 앱에서 worktree session 열기 dropdown에 `새 창에서 열기`, `새 탭에서 열기`, `현재 창에서 열기` 세 항목이 표시되는 것을 확인했다.
-- 실제 Tauri 앱에서 `현재 창에서 열기`를 선택했을 때 main window가 worktree session 화면으로 전환되고 `cwd`가 선택 worktree로 표시되는 것을 확인했다.
-- 실제 Tauri 앱에서 `새 창에서 열기`를 선택했을 때 `ACP Worktree Session` window가 추가되고 session 화면이 표시되는 것을 확인했다.
-- `/private/tmp/작업 tree/a#b%c` 임시 worktree를 실제 Tauri 앱 목록에 표시한 뒤 `새 창에서 열기`로 열었고, session window에서 `cwd=/private/tmp/작업 tree/a#b%c`로 복원되는 것을 확인했다. 검증 후 임시 worktree는 제거했다.
-- 실제 Tauri 앱에서 `새 탭에서 열기`를 선택했을 때 macOS native tab bar가 `ACP Worktree Session` window에 표시되는 것을 확인했다.
-- 같은 worktree를 `새 창에서 열기`로 다시 호출했을 때 window count가 main + session 2개로 유지되어 중복 session window가 생성되지 않는 것을 확인했다.
-- worktree session route는 `worktreePath` query string 기반으로 변경했고, `/`, 공백, 한글, `#`, `%` 인코딩을 Rust unit test로 고정했다.
-- 현재 창 session route도 frontend helper로 분리했고, 동일한 특수문자 worktree path round-trip을 Vitest로 고정했다.
-- session label은 SHA-256 prefix 기반으로 변경했고 route-safe/stable 속성을 Rust unit test로 고정했다.
-- permission 응답은 run id와 owner window를 확인하도록 좁혔고, wrong-run 응답이 waiter를 제거하지 않는지 Rust unit test로 확인했다.
-- permission dialog는 응답 선택 직후 optimistic하게 닫히며, command 실패 시 다시 열릴 수 있도록 answered set에서 제거한다.
-- `dangerouslySkipAllPermissions` 선택 시 확인 dialog를 거치도록 했다.
-- 실제 Tauri 앱에서 Codex ACP run을 시작해 `pwd` shell command tool call이 완료되고 usage bar가 갱신되는 것을 확인했다.
-- 실제 Tauri 앱에서 `/tmp/acp-permission-roundtrip-test.txt`를 생성하는 shell command tool call이 완료되는 것을 확인했고, 검증 후 임시 파일은 제거했다.
-- 위 두 실제 agent/tool 호출은 default permission mode에서 permission dialog를 표시하지 않아 permission response round-trip 검증 항목은 아직 남아 있다.
-- login shell PATH 조회는 2초 timeout을 둬 느린 shell init에 무기한 막히지 않도록 했다.
-- icon asset은 `apps/desktop/src-tauri/icons/README.md`에 source PNG와 `tauri icon` 재생성 절차를 문서화했다.
-- 실제 Tauri multi-window/tab, permission request round-trip, packaged/Finder 실행 PATH 동작은 아직 수동 검증이 필요하다.
+- `ACP_OPEN_DEVTOOLS` 미설정 dev 실행에서 DevTools가 자동으로 열리지 않는 것을 확인했다.
+- worktree dropdown에 `새 창에서 열기`, `새 탭에서 열기`, `현재 창에서 열기`가 표시되는 것을 확인했다.
+- `현재 창에서 열기`가 main window를 session 화면으로 전환하고 선택 worktree cwd를 표시하는 것을 확인했다.
+- `새 창에서 열기`가 `ACP Worktree Session` window를 추가하고 session 화면을 표시하는 것을 확인했다.
+- `/private/tmp/작업 tree/a#b%c` 임시 worktree를 새 window로 열어 cwd가 정확히 복원되는 것을 확인했다.
+- `새 탭에서 열기`가 macOS native tab bar에 session tab을 추가하는 것을 확인했다.
+- 같은 worktree를 다시 `새 창에서 열기`로 호출했을 때 session window count가 증가하지 않아 중복 window가 생성되지 않는 것을 확인했다.
+- 실제 Codex ACP run에서 `pwd` tool call이 완료되고 usage bar가 갱신되는 것을 확인했다.
+- 실제 Codex ACP run에서 `/tmp/acp-permission-roundtrip-test.txt` 생성 tool call이 완료되는 것을 확인했고, 검증 후 임시 파일은 제거했다.
+- `Permission Smoke` catalog로 실제 Tauri 앱을 실행해 permission dialog 표시를 확인했다.
+- 실제 permission dialog에서 `Allow once` 선택 시 dialog가 닫히고 agent message에 `optionId: "allow-once"` 응답이 전달되는 것을 확인했다.
+- 실제 permission dialog에서 `Reject` 선택 시 dialog가 닫히고 agent message에 `optionId: "reject"` 응답이 전달되는 것을 확인했다.
 
-## 참고 변경 파일
+## 남은 작업
+
+- packaged 앱을 만든 뒤 Finder/Launchpad에서 실행해 login shell PATH 기반 command resolution을 확인한다.
+- 서로 다른 두 session window에서 agent run을 동시에 시작해 event, usage, permission dialog, cancel 상태가 서로 섞이지 않는지 최종 수동 검증한다.
+- 같은 worktree re-open 시 중복 window가 생기지 않는 것은 확인했지만, 기존 session window가 foreground focus까지 받는지는 눈으로 한 번 더 확인한다.
+- 완료된 run의 permission waiter 정리는 allow/reject E2E로 확인했다. 취소된 run의 waiter 정리는 unit test 범위 외 실제 UI smoke가 아직 남아 있다.
+
+## 재검증 명령
+
+```bash
+pnpm run check-types
+pnpm run test
+pnpm run build
+cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- --nocapture
+node --check apps/desktop/scripts/acp-permission-smoke-agent.mjs
+```
+
+Permission smoke catalog로 앱을 실행할 때:
+
+```bash
+cd apps/desktop
+ACP_AGENT_CATALOG_PATH=/Users/yoophi/project/acp-minimal-app/apps/desktop/scripts/acp-smoke-agents.json pnpm tauri dev
+```
+
+## 참고 파일
 
 - `apps/desktop/src-tauri/src/infrastructure/window_manager.rs`
 - `apps/desktop/src-tauri/src/infrastructure/acp/runner.rs`
 - `apps/desktop/src-tauri/src/infrastructure/acp/permission_flow.rs`
 - `apps/desktop/src-tauri/src/infrastructure/permission_broker.rs`
 - `apps/desktop/src-tauri/src/infrastructure/tauri_run_event_sink.rs`
-- `apps/desktop/src-tauri/src/inbound/tauri_commands.rs`
 - `apps/desktop/src-tauri/src/infrastructure/acp/util.rs`
 - `apps/desktop/src/app/App.tsx`
+- `apps/desktop/src/app/model/session-route.ts`
 - `apps/desktop/src/features/project-worktree/ui/project-worktree-card.tsx`
 - `apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx`
-- `apps/desktop/src/pages/project-worktree-session/ui/project-worktree-session-page.tsx`
+- `apps/desktop/scripts/acp-permission-smoke-agent.mjs`
