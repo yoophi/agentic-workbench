@@ -16,6 +16,10 @@ export async function startAgentRun(request: AgentRunRequest) {
   return invoke<AgentRun>("start_agent_run", { request });
 }
 
+export async function sendPromptToRun(runId: string, prompt: string) {
+  return invoke<void>("send_prompt_to_run", { runId, prompt });
+}
+
 export async function cancelAgentRun(runId: string) {
   return invoke<void>("cancel_agent_run", { runId });
 }

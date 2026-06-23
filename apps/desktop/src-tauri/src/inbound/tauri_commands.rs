@@ -5,7 +5,8 @@ use tauri::{AppHandle, State};
 use crate::{
     application::{
         cancel_agent_run::CancelAgentRunUseCase, git_branch_service, git_remote_service,
-        git_worktree_service, project_service, start_agent_run::StartAgentRunUseCase,
+        git_worktree_service, project_service, send_prompt::SendPromptUseCase,
+        start_agent_run::StartAgentRunUseCase,
     },
     domain::{
         agent::AgentDescriptor,
@@ -127,6 +128,21 @@ pub async fn start_agent_run(
 
     StartAgentRunUseCase::new(registry)
         .execute(runner, sink, request, None)
+        .await
+        .map_err(String::from)
+}
+
+#[tauri::command]
+pub async fn send_prompt_to_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    run_id: String,
+    prompt: String,
+) -> Result<(), String> {
+    let sink = TauriRunEventSink::new(app, state.inner().clone());
+    let registry = state.inner().clone();
+    SendPromptUseCase::new(registry)
+        .execute(sink, run_id, prompt)
         .await
         .map_err(String::from)
 }

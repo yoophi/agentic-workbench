@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BotIcon, PlayIcon, SquareIcon } from "lucide-react";
+import { BotIcon, PlayIcon, SquareIcon, XIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -8,6 +8,7 @@ import {
   cancelAgentRun,
   listenRunEvents,
   listAgents,
+  sendPromptToRun,
   startAgentRun,
 } from "@/entities/agent-run/api/agent-run-repository";
 import { agentRunQueryKeys } from "@/entities/agent-run/api/query-keys";
@@ -52,15 +53,23 @@ type AgentRunPanelProps = {
 
 const defaultPrompt = "";
 
+type QueuedPrompt = {
+  id: string;
+  text: string;
+};
+
 export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isAwaitingPromptResponse, setIsAwaitingPromptResponse] = useState(false);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [filter, setFilter] = useState<EventGroup | "all">("all");
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
 
   const agentsQuery = useQuery({
     queryKey: agentRunQueryKeys.agents,
@@ -75,6 +84,10 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
   }, [agents, selectedAgentId]);
 
   useEffect(() => {
+    activeRunIdRef.current = activeRunId;
+  }, [activeRunId]);
+
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void listenRunEvents((envelope) => {
@@ -82,13 +95,33 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
         appendOneTimelineItem(currentItems, toTimelineItem(envelope.runId, envelope.event)),
       );
 
-      if (
-        envelope.event.type === "error" ||
-        (envelope.event.type === "lifecycle" &&
-          ["completed", "cancelled"].includes(envelope.event.status))
-      ) {
+      if (envelope.runId !== activeRunIdRef.current) {
+        return;
+      }
+
+      if (envelope.event.type === "error") {
+        setIsAwaitingPromptResponse(false);
+        setQueuedPrompts([]);
         setIsRunning(false);
+        activeRunIdRef.current = null;
         setActiveRunId(null);
+        return;
+      }
+
+      if (envelope.event.type === "lifecycle") {
+        if (envelope.event.status === "promptSent") {
+          setIsAwaitingPromptResponse(true);
+        }
+        if (envelope.event.status === "promptCompleted") {
+          setIsAwaitingPromptResponse(false);
+        }
+        if (["completed", "cancelled"].includes(envelope.event.status)) {
+          setIsAwaitingPromptResponse(false);
+          setQueuedPrompts([]);
+          setIsRunning(false);
+          activeRunIdRef.current = null;
+          setActiveRunId(null);
+        }
       }
     }).then((cleanup) => {
       if (disposed) {
@@ -108,12 +141,28 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [items]);
 
+  useEffect(() => {
+    if (!activeRunId || !isRunning || isAwaitingPromptResponse || queuedPrompts.length === 0) {
+      return;
+    }
+
+    const nextPrompt = queuedPrompts[0];
+    setIsAwaitingPromptResponse(true);
+    setQueuedPrompts((current) => current.slice(1));
+    void sendPromptToRun(activeRunId, nextPrompt.text).catch((caughtError) => {
+      setQueuedPrompts((current) => [nextPrompt, ...current]);
+      setIsAwaitingPromptResponse(false);
+      setError(String(caughtError));
+    });
+  }, [activeRunId, isAwaitingPromptResponse, isRunning, queuedPrompts]);
+
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   const visibleItems = useMemo(
     () => (filter === "all" ? items : items.filter((item) => item.group === filter)),
     [filter, items],
   );
-  const canRun = Boolean(selectedAgentId && prompt.trim() && !isRunning);
+  const canStartRun = Boolean(selectedAgentId && prompt.trim() && !isRunning);
+  const canQueuePrompt = Boolean(activeRunId && isRunning && prompt.trim());
   const canCancel = Boolean(activeRunId && isRunning);
 
   async function run() {
@@ -125,8 +174,12 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
     const runId = crypto.randomUUID();
     setError(null);
     setItems([]);
+    setQueuedPrompts([]);
+    activeRunIdRef.current = runId;
     setActiveRunId(runId);
     setIsRunning(true);
+    setIsAwaitingPromptResponse(true);
+    setPrompt(defaultPrompt);
 
     try {
       await startAgentRun({
@@ -139,9 +192,22 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
       });
     } catch (caughtError) {
       setError(String(caughtError));
+      setPrompt(goal);
+      setIsAwaitingPromptResponse(false);
       setIsRunning(false);
+      activeRunIdRef.current = null;
       setActiveRunId(null);
     }
+  }
+
+  function enqueuePrompt() {
+    const nextPrompt = prompt.trim();
+    if (!nextPrompt) {
+      return;
+    }
+
+    setQueuedPrompts((current) => [...current, { id: crypto.randomUUID(), text: nextPrompt }]);
+    setPrompt(defaultPrompt);
   }
 
   async function cancel() {
@@ -154,7 +220,10 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
     } catch (caughtError) {
       setError(String(caughtError));
     } finally {
+      setQueuedPrompts([]);
+      setIsAwaitingPromptResponse(false);
       setIsRunning(false);
+      activeRunIdRef.current = null;
       setActiveRunId(null);
     }
   }
@@ -251,32 +320,82 @@ export function AgentRunPanel({ workingDirectory }: AgentRunPanelProps) {
           value={prompt}
           onValueChange={setPrompt}
           onSubmit={() => {
-            if (canRun) {
+            if (isRunning) {
+              enqueuePrompt();
+              return;
+            }
+            if (canStartRun) {
               void run();
             }
           }}
           isLoading={isRunning}
           className="rounded-lg"
         >
-          <PromptInputTextarea
-            placeholder="선택한 worktree에서 실행할 작업을 입력하세요."
-            disabled={isRunning}
-          />
+          <PromptInputTextarea placeholder="선택한 worktree에서 실행할 작업을 입력하세요." />
+          {queuedPrompts.length > 0 && (
+            <div className="flex flex-col gap-2 px-2 pb-2">
+              <div className="text-xs text-muted-foreground">대기 중인 prompt {queuedPrompts.length}개</div>
+              <div className="flex flex-col gap-2">
+                {queuedPrompts.map((queuedPrompt, index) => (
+                  <div
+                    key={queuedPrompt.id}
+                    className="flex items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1 text-sm">
+                      <span className="mr-2 text-xs text-muted-foreground">#{index + 1}</span>
+                      <span className="whitespace-pre-wrap break-words">{queuedPrompt.text}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => {
+                        setQueuedPrompts((current) =>
+                          current.filter((item) => item.id !== queuedPrompt.id),
+                        );
+                      }}
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3 px-2 pb-1">
             <span className="text-xs text-muted-foreground">
-              {isRunning ? "실행 중에는 follow-up prompt를 보내지 않습니다." : "Enter로 실행, Shift+Enter로 줄바꿈"}
+              {isRunning
+                ? isAwaitingPromptResponse
+                  ? "현재 prompt 처리 중입니다. Enter로 다음 prompt를 queue에 추가합니다."
+                  : "다음 prompt를 바로 보낼 수 있습니다. Enter로 queue에 추가합니다."
+                : "Enter로 실행, Shift+Enter로 줄바꿈"}
             </span>
             <PromptInputActions>
               {isRunning ? (
-                <PromptInputAction tooltip="Cancel run">
-                  <Button type="button" variant="destructive" size="sm" disabled={!canCancel} onClick={() => void cancel()}>
-                    <SquareIcon data-icon="inline-start" />
-                    Cancel
-                  </Button>
-                </PromptInputAction>
+                <>
+                  <PromptInputAction tooltip="Queue prompt">
+                    <Button type="button" size="sm" disabled={!canQueuePrompt} onClick={enqueuePrompt}>
+                      <PlayIcon data-icon="inline-start" />
+                      Queue
+                    </Button>
+                  </PromptInputAction>
+                  <PromptInputAction tooltip="Cancel run">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={!canCancel}
+                      onClick={() => void cancel()}
+                    >
+                      <SquareIcon data-icon="inline-start" />
+                      Cancel
+                    </Button>
+                  </PromptInputAction>
+                </>
               ) : (
                 <PromptInputAction tooltip="Start run">
-                  <Button type="button" size="sm" disabled={!canRun} onClick={() => void run()}>
+                  <Button type="button" size="sm" disabled={!canStartRun} onClick={() => void run()}>
                     <PlayIcon data-icon="inline-start" />
                     Run
                   </Button>
