@@ -29,8 +29,8 @@
 주의할 점:
 
 - `ACP_AGENT_CATALOG_PATH` smoke catalog는 root `pnpm run tauri:dev`의 Turborepo 경유 실행에서는 Rust 앱까지 전달되지 않았다. smoke 검증 시에는 `apps/desktop`에서 직접 `ACP_AGENT_CATALOG_PATH=... pnpm tauri dev`로 실행해야 했다.
-- smoke catalog command는 repo root worktree에서 실행하는 검증용이다. 다른 worktree에서 해당 catalog를 쓰면 상대 경로 때문에 script를 찾지 못할 수 있다.
-- packaged 앱을 Finder/Launchpad에서 실행했을 때 login shell PATH 보강이 실제 `codex`, `node`, `npx` resolution까지 해결하는지는 아직 별도 수동 검증이 필요하다.
+- smoke catalog command는 linked worktree cwd에서도 main worktree의 smoke script를 찾도록 `git worktree list --porcelain` 기반으로 보강했다.
+- production Vite build는 chunk size warning을 출력한다. 기존 번들 크기 경고이며 이번 PR 기능 검증을 막지는 않는다.
 
 ## 완료한 검증
 
@@ -54,13 +54,19 @@
 - `Permission Smoke` catalog로 실제 Tauri 앱을 실행해 permission dialog 표시를 확인했다.
 - 실제 permission dialog에서 `Allow once` 선택 시 dialog가 닫히고 agent message에 `optionId: "allow-once"` 응답이 전달되는 것을 확인했다.
 - 실제 permission dialog에서 `Reject` 선택 시 dialog가 닫히고 agent message에 `optionId: "reject"` 응답이 전달되는 것을 확인했다.
+- 같은 worktree를 다시 `새 창에서 열기`로 호출했을 때 창 수가 main + session 2개로 유지되고 기존 `ACP Worktree Session`이 foreground로 올라오는 것을 확인했다.
+- pending permission dialog가 열린 session window를 닫았을 때 main window만 남고 `acp-permission-smoke-agent.mjs` child process가 정리되는 것을 확인했다.
+- 서로 다른 두 session window에서 동시에 `Permission Smoke` run을 시작했고, main worktree와 linked worktree 각각의 permission dialog가 서로 다른 workspace를 표시하는 것을 확인했다.
+- 동시 permission 상태에서 main worktree run은 `Reject`, linked worktree run은 `Allow once`를 선택했고 각 window timeline에 해당 선택과 agent response가 서로 섞이지 않고 기록되는 것을 확인했다.
+- smoke catalog command가 linked worktree cwd에서도 smoke agent를 초기화하는 것을 별도 harness로 확인했다.
+- `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml`을 release warning 정리 후 다시 통과했다.
+- `pnpm --filter @acp/desktop tauri build` 통과. `.app`와 `.dmg` bundle이 생성됐고 release Rust warning은 없다.
+- Finder에서 packaged `.app`를 실행해 기본 Codex agent의 `npx -y @agentclientprotocol/codex-acp`가 `npm exec`, `codex-acp`, Node, Codex app-server 프로세스로 시작되는 것을 확인했다.
+- Finder-launched packaged 앱에서 Codex ACP `pwd` tool call이 `Completed`로 끝나고 `/Users/yoophi/project/acp-minimal-app`와 usage bar가 표시되는 것을 확인했다.
 
 ## 남은 작업
 
-- packaged 앱을 만든 뒤 Finder/Launchpad에서 실행해 login shell PATH 기반 command resolution을 확인한다.
-- 서로 다른 두 session window에서 agent run을 동시에 시작해 event, usage, permission dialog, cancel 상태가 서로 섞이지 않는지 최종 수동 검증한다.
-- 같은 worktree re-open 시 중복 window가 생기지 않는 것은 확인했지만, 기존 session window가 foreground focus까지 받는지는 눈으로 한 번 더 확인한다.
-- 완료된 run의 permission waiter 정리는 allow/reject E2E로 확인했다. 취소된 run의 waiter 정리는 unit test 범위 외 실제 UI smoke가 아직 남아 있다.
+- 남은 작업 없음.
 
 ## 재검증 명령
 
@@ -71,6 +77,7 @@ pnpm run build
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- --nocapture
 node --check apps/desktop/scripts/acp-permission-smoke-agent.mjs
+pnpm --filter @acp/desktop tauri build
 ```
 
 Permission smoke catalog로 앱을 실행할 때:
