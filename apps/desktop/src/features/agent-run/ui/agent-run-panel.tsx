@@ -184,6 +184,9 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     );
     void sendPromptToRun(activeRunId, nextPrompt.text).catch((caughtError) => {
       setQueuedPrompts((current) => [nextPrompt, ...current]);
+      setItems((currentItems) =>
+        removeUserMessage(currentItems, activeRunId, nextPrompt.text),
+      );
       setIsAwaitingPromptResponse(false);
       setError(String(caughtError));
     });
@@ -326,7 +329,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
                     onValueChange={setSelectedAgentId}
                     disabled={isRunning || agentsQuery.isLoading}
                   >
-                    <SelectTrigger className="w-56">
+                    <SelectTrigger className="w-full sm:w-56">
                       <SelectValue placeholder="Agent 선택" />
                     </SelectTrigger>
                     <SelectContent>
@@ -506,15 +509,15 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
             </div>
           </div>
         )}
-        <div className="flex items-center justify-between gap-3 px-2 pb-1">
-          <span className="text-xs text-muted-foreground">
+        <div className="flex flex-col gap-3 px-2 pb-1 sm:flex-row sm:items-center sm:justify-between">
+          <span className="min-w-0 text-xs text-muted-foreground">
             {isRunning
               ? isAwaitingPromptResponse
                 ? "현재 prompt 처리 중입니다. Enter로 다음 prompt를 queue에 추가합니다."
                 : "다음 prompt를 바로 보낼 수 있습니다. Enter로 queue에 추가합니다."
               : "Enter로 실행, Shift+Enter로 줄바꿈"}
           </span>
-          <PromptInputActions>
+          <PromptInputActions className="justify-end">
             {isRunning ? (
               <>
                 <PromptInputAction tooltip="Queue prompt">
@@ -627,7 +630,7 @@ function RunEventItem({ item }: { item: TimelineItem }) {
   if (item.group === "user/message") {
     return (
       <Message className="justify-end">
-        <MessageContent className="max-w-[80%] whitespace-pre-wrap bg-primary text-primary-foreground">
+        <MessageContent className="min-w-0 max-w-[80%] whitespace-pre-wrap break-words bg-primary text-primary-foreground">
           {item.body}
         </MessageContent>
       </Message>
