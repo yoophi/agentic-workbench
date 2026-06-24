@@ -41,9 +41,9 @@ export const StepsTrigger = ({
     )}
     {...props}
   >
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-start gap-2">
       {leftIcon ? (
-        <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
+        <span className="relative mt-0.5 inline-flex size-4 shrink-0 items-center justify-center">
           <span
             className={cn(
               "transition-opacity",
@@ -59,7 +59,7 @@ export const StepsTrigger = ({
       ) : null}
       <span className="min-w-0 break-words">{children}</span>
     </div>
-    {!leftIcon && (
+    {(!leftIcon || !swapIconOnHover) && (
       <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
     )}
   </CollapsibleTrigger>
