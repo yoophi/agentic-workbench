@@ -109,6 +109,15 @@ export const AgentRun: Story = {
   ),
 };
 
+export const AgentRunRalphLoop: Story = {
+  render: () => (
+    <AgentRunPanel
+      workingDirectory="/Users/yoophi/project/acp-minimal-app"
+      initialInputMode="ralphLoop"
+    />
+  ),
+};
+
 function SavedPromptToolbarStory({ disabled = false }: { disabled?: boolean }) {
   const [sentPrompt, setSentPrompt] = useState<string | null>(null);
 
