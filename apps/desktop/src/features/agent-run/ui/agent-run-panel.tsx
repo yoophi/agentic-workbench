@@ -161,55 +161,44 @@ const permissionModeOptions: Array<{
   },
 ];
 
-const modelOptions = [
-  {
-    value: "providerDefault",
-    label: "Provider default",
-    description: "Use the agent/provider default model.",
-  },
-  {
-    value: "gpt-5",
-    label: "GPT-5",
-    description: "Use GPT-5 when the selected provider advertises it.",
-  },
-  {
-    value: "gpt-5-codex",
-    label: "GPT-5 Codex",
-    description: "Use GPT-5 Codex when the selected provider advertises it.",
-  },
-  {
-    value: "claude-sonnet-4-5",
-    label: "Claude Sonnet 4.5",
-    description: "Use Claude Sonnet 4.5 when the selected provider advertises it.",
-  },
-] as const;
-
-const contextSizeOptions: Array<{
-  value: ContextSizePreset;
+type SelectOption<Value extends string = string> = {
+  value: Value;
   label: string;
   description: string;
-}> = [
-  {
-    value: "default",
-    label: "Default context",
-    description: "Use the agent/provider default context size.",
-  },
-  {
-    value: "medium",
-    label: "Medium",
-    description: "Prefer a balanced context window when supported.",
-  },
-  {
-    value: "large",
-    label: "Large",
-    description: "Prefer a larger context window when supported.",
-  },
-  {
-    value: "xLarge",
-    label: "XL",
-    description: "Prefer the largest common context window when supported.",
-  },
-];
+};
+
+const providerDefaultModelOption: SelectOption = {
+  value: "providerDefault",
+  label: "Provider default",
+  description: "Use the selected agent/provider default model.",
+};
+
+const defaultContextSizeOption: SelectOption<ContextSizePreset> = {
+  value: "default",
+  label: "Default context",
+  description: "Use the selected agent/provider default context size.",
+};
+
+const contextSizeDescriptions: Record<ContextSizePreset, string> = {
+  default: defaultContextSizeOption.description,
+  medium: "Prefer a balanced context window.",
+  large: "Prefer a larger context window.",
+  xLarge: "Prefer the largest context window advertised by the selected agent.",
+};
+
+const fallbackContextSizeLabels: Record<ContextSizePreset, string> = {
+  default: defaultContextSizeOption.label,
+  medium: "Medium",
+  large: "Large",
+  xLarge: "XL",
+};
+
+const fallbackModelDescriptions: Record<string, string> = {
+  "gpt-5": "Use GPT-5 when the selected provider advertises it.",
+  "gpt-5-codex": "Use GPT-5 Codex when the selected provider advertises it.",
+  "claude-sonnet-4-5":
+    "Use Claude Sonnet 4.5 when the selected provider advertises it.",
+};
 
 export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelProps) {
   const queryClient = useQueryClient();
@@ -218,9 +207,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("default");
   const [isChangingPermissionMode, setIsChangingPermissionMode] = useState(false);
-  const [modelId, setModelId] = useState<(typeof modelOptions)[number]["value"]>(
-    "providerDefault",
-  );
+  const [modelId, setModelId] = useState("providerDefault");
   const [contextSize, setContextSize] = useState<ContextSizePreset>("default");
   const [ralphLoopEnabled, setRalphLoopEnabled] = useState(false);
   const [ralphMaxIterations, setRalphMaxIterations] = useState(5);
@@ -484,6 +471,50 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   }, [activeRunId, isAwaitingPromptResponse, isRunning, queuedPrompts]);
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const modelOptions = useMemo<SelectOption[]>(() => {
+    const advertisedModels = selectedAgent?.models ?? [];
+    if (advertisedModels.length === 0) {
+      return [providerDefaultModelOption];
+    }
+
+    return [
+      providerDefaultModelOption,
+      ...advertisedModels.map((model) => ({
+        value: model.id,
+        label: model.label,
+        description:
+          fallbackModelDescriptions[model.id] ??
+          `Use ${model.label} with ${selectedAgent?.label ?? "the selected agent"}.`,
+      })),
+    ];
+  }, [selectedAgent]);
+  const contextSizeOptions = useMemo<SelectOption<ContextSizePreset>[]>(() => {
+    const advertisedContextSizes = selectedAgent?.contextSizes ?? [];
+    if (advertisedContextSizes.length === 0) {
+      return [defaultContextSizeOption];
+    }
+
+    return [
+      defaultContextSizeOption,
+      ...advertisedContextSizes
+        .filter((contextSize): contextSize is { id: ContextSizePreset; label: string } =>
+          isContextSizePreset(contextSize.id),
+        )
+        .map((contextSize) => ({
+          value: contextSize.id,
+          label: contextSize.label || fallbackContextSizeLabels[contextSize.id],
+          description: contextSizeDescriptions[contextSize.id],
+        })),
+    ];
+  }, [selectedAgent]);
+  useEffect(() => {
+    if (!modelOptions.some((option) => option.value === modelId)) {
+      setModelId(providerDefaultModelOption.value);
+    }
+    if (!contextSizeOptions.some((option) => option.value === contextSize)) {
+      setContextSize(defaultContextSizeOption.value);
+    }
+  }, [contextSize, contextSizeOptions, modelId, modelOptions]);
   const visibleItems = useMemo(
     () => (filter === "all" ? items : items.filter((item) => item.group === filter)),
     [filter, items],
@@ -1055,9 +1086,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
             <span className="text-xs font-medium text-muted-foreground">Model</span>
             <Select
               value={modelId}
-              onValueChange={(value) =>
-                setModelId(value as (typeof modelOptions)[number]["value"])
-              }
+              onValueChange={setModelId}
               disabled={isRunning}
             >
               <SelectTrigger className="h-8 w-52">
@@ -1549,8 +1578,12 @@ function clampPromptPanelHeight(height: number) {
   return Math.min(PROMPT_PANEL_MAX_HEIGHT, Math.max(PROMPT_PANEL_MIN_HEIGHT, height));
 }
 
-function isModelOptionValue(value: string): value is (typeof modelOptions)[number]["value"] {
-  return modelOptions.some((option) => option.value === value);
+function isModelOptionValue(value: string) {
+  return value.trim().length > 0;
+}
+
+function isContextSizePreset(value: string): value is ContextSizePreset {
+  return value === "default" || value === "medium" || value === "large" || value === "xLarge";
 }
 
 function parseOptionalPositiveInteger(value: string) {
