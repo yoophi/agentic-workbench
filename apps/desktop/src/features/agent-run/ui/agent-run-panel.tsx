@@ -393,8 +393,13 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   }
 
   async function respondToPermission(permissionId: string, optionId: string) {
+    if (!activeRunId) {
+      setError("응답할 active run이 없습니다.");
+      return;
+    }
+
     try {
-      await respondAgentPermission(permissionId, optionId);
+      await respondAgentPermission(activeRunId, permissionId, optionId);
     } catch (caughtError) {
       setError(String(caughtError));
     }
