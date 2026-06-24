@@ -68,6 +68,43 @@ describe("run panel state", () => {
     });
   });
 
+  it("tracks prompt response lifecycle without finishing the run", () => {
+    const awaitingState = applyRunEvent(runningState({ isAwaitingPromptResponse: false }), {
+      runId: "run-active",
+      event: { type: "lifecycle", status: "promptSent", message: "sent" },
+    });
+    const completedState = applyRunEvent(awaitingState, {
+      runId: "run-active",
+      event: { type: "lifecycle", status: "promptCompleted", message: "done" },
+    });
+
+    expect(awaitingState.isRunning).toBe(true);
+    expect(awaitingState.isAwaitingPromptResponse).toBe(true);
+    expect(completedState.isRunning).toBe(true);
+    expect(completedState.isAwaitingPromptResponse).toBe(false);
+    expect(completedState.activeRunId).toBe("run-active");
+  });
+
+  it("finishes the run and preserves the error event in the timeline", () => {
+    const nextState = applyRunEvent(
+      runningState({
+        queuedPrompts: [{ id: "queued-a", text: "retry after failure" }],
+      }),
+      {
+        runId: "run-active",
+        event: { type: "error", message: "agent failed" },
+      },
+    );
+
+    expect(nextState.isRunning).toBe(false);
+    expect(nextState.activeRunId).toBeNull();
+    expect(nextState.queuedPrompts).toEqual([]);
+    expect(nextState.items[nextState.items.length - 1]?.event).toMatchObject({
+      type: "error",
+      message: "agent failed",
+    });
+  });
+
   it("moves queued prompts without mutating the original queue", () => {
     const queue = [
       { id: "a", text: "first" },
@@ -79,6 +116,17 @@ describe("run panel state", () => {
 
     expect(nextQueue.map((item) => item.id)).toEqual(["c", "a", "b"]);
     expect(queue.map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("returns the same queue reference for invalid move requests", () => {
+    const queue = [
+      { id: "a", text: "first" },
+      { id: "b", text: "second" },
+    ];
+
+    expect(moveQueuedPrompt(queue, 0, 0)).toBe(queue);
+    expect(moveQueuedPrompt(queue, -1, 1)).toBe(queue);
+    expect(moveQueuedPrompt(queue, 0, 5)).toBe(queue);
   });
 
   it("reports whether queued prompt editing found its target", () => {
@@ -100,6 +148,23 @@ describe("run panel state", () => {
 
     expect(withUserMessage).toHaveLength(1);
     expect(nextItems).toEqual([]);
+  });
+
+  it("removes only the matching user message for the matching run", () => {
+    const items = [
+      ...addUserMessage([], "run-active", "start prompt"),
+      ...addUserMessage([], "run-other", "start prompt"),
+      ...addUserMessage([], "run-active", "different prompt"),
+    ];
+
+    const nextItems = removeUserMessage(items, "run-active", "start prompt");
+
+    expect(nextItems).toHaveLength(2);
+    expect(nextItems.map((item) => item.runId)).toEqual(["run-other", "run-active"]);
+    expect(nextItems.map((item) => item.event)).toEqual([
+      expect.objectContaining({ type: "userMessage", text: "start prompt" }),
+      expect.objectContaining({ type: "userMessage", text: "different prompt" }),
+    ]);
   });
 
   it("builds a steer prompt with separate original and steering sections", () => {
