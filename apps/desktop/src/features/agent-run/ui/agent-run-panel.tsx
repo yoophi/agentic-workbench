@@ -1506,31 +1506,30 @@ function ToolStep({ item }: { item: TimelineItem }) {
 
   return (
     <div className="space-y-4">
-    <Steps className="" defaultOpen={false}>
-      <StepsTrigger>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="">{item.title || "tool"}</span>
-          <ToolStatusIcon status={status} />
-        </span>
-      </StepsTrigger>
-      <StepsContent>
-        {locations.map((path) => (
-          <StepsItem key={path}>
-            <span className="font-medium text-foreground">path</span>{" "}
-            <code className="inline-block max-w-full rounded bg-background px-1.5 py-0.5 align-bottom font-mono text-xs">
-              <EllipsisPopoverText
-                value={path}
-                className="font-mono text-xs"
-                contentClassName="font-mono text-xs"
-              />
-            </code>
-          </StepsItem>
-        ))}
-        {!toolCallId && locations.length === 0 && item.body && (
-          <StepsItem className="whitespace-pre-wrap break-words font-mono text-xs">{item.body}</StepsItem>
-        )}
-      </StepsContent>
-    </Steps>
+      <Steps className="" defaultOpen={false}>
+        <StepsTrigger leftIcon={<ToolStatusIcon status={status} />} swapIconOnHover={false}>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="">{item.title || "tool"}</span>
+          </span>
+        </StepsTrigger>
+        <StepsContent>
+          {locations.map((path) => (
+            <StepsItem key={path}>
+              <span className="font-medium text-foreground">path</span>{" "}
+              <code className="inline-block max-w-full rounded bg-background px-1.5 py-0.5 align-bottom font-mono text-xs">
+                <EllipsisPopoverText
+                  value={path}
+                  className="font-mono text-xs"
+                  contentClassName="font-mono text-xs"
+                />
+              </code>
+            </StepsItem>
+          ))}
+          {!toolCallId && locations.length === 0 && item.body && (
+            <StepsItem className="whitespace-pre-wrap break-words font-mono text-xs">{item.body}</StepsItem>
+          )}
+        </StepsContent>
+      </Steps>
     </div>
   );
 }
