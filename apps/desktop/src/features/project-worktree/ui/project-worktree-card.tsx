@@ -27,6 +27,16 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -78,6 +88,8 @@ export function ProjectWorktreeCard({
   const queryClient = useQueryClient();
   const [form, setForm] = useState<GitWorktreeCreateInput>(emptyForm);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  const [pendingDeleteWorktree, setPendingDeleteWorktree] =
+    useState<GitWorktree | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryKey = projectQueryKeys.gitWorktrees(workingDirectory);
   const worktreesQuery = useQuery({
@@ -113,12 +125,18 @@ export function ProjectWorktreeCard({
     }
   }
 
-  async function handleDelete(path: string) {
+  async function confirmDeleteWorktree() {
+    if (!pendingDeleteWorktree) {
+      return;
+    }
+
+    const path = pendingDeleteWorktree.path;
     setDeletingPath(path);
     setError(null);
 
     try {
       await deleteWorktreeMutation.mutateAsync(path);
+      setPendingDeleteWorktree(null);
     } catch (caughtError) {
       setError(String(caughtError));
     } finally {
@@ -309,7 +327,10 @@ export function ProjectWorktreeCard({
                           variant="ghost"
                           size="icon-sm"
                           disabled={!worktree.canDelete || deletingPath === worktree.path}
-                          onClick={() => void handleDelete(worktree.path)}
+                          onClick={() => {
+                            setError(null);
+                            setPendingDeleteWorktree(worktree);
+                          }}
                           aria-label={
                             deletingPath === worktree.path
                               ? `${worktree.path} worktree 삭제 중`
@@ -331,20 +352,117 @@ export function ProjectWorktreeCard({
           </div>
         )}
       </CardContent>
+      <DeleteWorktreeConfirmDialog
+        worktree={pendingDeleteWorktree}
+        isDeleting={Boolean(
+          pendingDeleteWorktree && deletingPath === pendingDeleteWorktree.path,
+        )}
+        onOpenChange={(open) => {
+          if (!open && !deleteWorktreeMutation.isPending) {
+            setPendingDeleteWorktree(null);
+          }
+        }}
+        onConfirm={confirmDeleteWorktree}
+      />
     </Card>
   );
 }
 
+function DeleteWorktreeConfirmDialog({
+  worktree,
+  isDeleting,
+  onOpenChange,
+  onConfirm,
+}: {
+  worktree: GitWorktree | null;
+  isDeleting: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => Promise<void>;
+}) {
+  return (
+    <AlertDialog open={worktree !== null} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Git worktree를 삭제할까요?</AlertDialogTitle>
+          <AlertDialogDescription>
+            선택한 worktree가 작업 목록에서 제거됩니다. 삭제 전 대상 정보를 확인하세요.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {worktree && (
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+            <DialogDetail label="경로" value={worktree.path} mono />
+            <DialogDetail label="브랜치" value={worktree.branch || "-"} />
+            <DialogDetail label="상태" value={worktreeStatusLabel(worktree.status)} />
+            {worktree.pruneReason && (
+              <DialogDetail label="Prune reason" value={worktree.pruneReason} />
+            )}
+            <p className="text-sm text-muted-foreground">
+              {deleteWorktreeGuidance(worktree)}
+            </p>
+          </div>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>취소</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={isDeleting}
+            onClick={(event) => {
+              event.preventDefault();
+              void onConfirm();
+            }}
+          >
+            {isDeleting && <Loader2Icon className="animate-spin" data-icon="inline-start" />}
+            삭제
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function DialogDetail({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="grid gap-1">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className={mono ? "break-all font-mono text-xs" : "break-words"}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function WorktreeStatusBadge({ status }: { status: GitWorktreeStatus }) {
+  return (
+    <Badge variant={status === "dirty" ? "destructive" : "secondary"}>
+      {worktreeStatusLabel(status)}
+    </Badge>
+  );
+}
+
+function worktreeStatusLabel(status: GitWorktreeStatus) {
   const labelByStatus: Record<GitWorktreeStatus, string> = {
     clean: "변경사항없음",
     prunable: "prune 가능",
     dirty: "변경사항 있음",
   };
 
-  return (
-    <Badge variant={status === "dirty" ? "destructive" : "secondary"}>
-      {labelByStatus[status]}
-    </Badge>
-  );
+  return labelByStatus[status];
+}
+
+function deleteWorktreeGuidance(worktree: GitWorktree) {
+  if (worktree.status === "dirty") {
+    return "이 worktree에는 변경사항이 있습니다. 필요한 변경을 커밋하거나 백업했는지 확인하세요.";
+  }
+  if (worktree.status === "prunable") {
+    return "이 worktree는 prune 가능한 상태입니다. Git 메타데이터 정리를 위해 삭제를 계속할 수 있습니다.";
+  }
+  return "변경사항이 없는 worktree입니다. 경로와 브랜치가 맞는지 확인한 뒤 삭제하세요.";
 }
