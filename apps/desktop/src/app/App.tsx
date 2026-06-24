@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import { useProjectUiStore } from "@/app/model/project-ui-store";
 import {
@@ -8,6 +15,10 @@ import {
   listProjects,
   updateProject,
 } from "@/entities/project/api/project-repository";
+import {
+  buildProjectWorktreeRoute,
+  readWorktreePath,
+} from "@/app/model/session-route";
 import {
   listGitWorktrees,
   openWorktreeWindow,
@@ -97,9 +108,7 @@ export function App() {
     mode: OpenWorktreeMode,
   ) {
     if (mode === "current") {
-      navigate(
-        `/projects/${project.id}/worktrees/${encodeURIComponent(worktree.path)}`,
-      );
+      navigate(buildProjectWorktreeRoute(project.id, worktree.path));
       return;
     }
 
@@ -168,7 +177,7 @@ export function App() {
             }
           />
           <Route
-            path="/projects/:projectId/worktrees/:worktreePath"
+            path="/projects/:projectId/worktrees"
             element={
               <ProjectWorktreeSessionRoute
                 projects={projects}
@@ -178,7 +187,7 @@ export function App() {
             }
           />
           <Route
-            path="/session/:projectId/:worktreePath"
+            path="/session/:projectId"
             element={
               <ProjectWorktreeSessionRoute
                 projects={projects}
@@ -275,9 +284,10 @@ function ProjectWorktreeSessionRoute({
   onBack?: (projectId: string) => void;
   standalone?: boolean;
 }) {
-  const { projectId, worktreePath } = useParams();
+  const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const project = projects.find((project) => project.id === projectId);
-  const decodedWorktreePath = worktreePath ? decodeURIComponent(worktreePath) : "";
+  const decodedWorktreePath = readWorktreePath(searchParams);
   const worktreesQuery = useQuery({
     queryKey: project
       ? projectQueryKeys.gitWorktrees(project.workingDirectory)

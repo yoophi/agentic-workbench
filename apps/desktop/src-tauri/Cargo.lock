@@ -15,6 +15,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_json",
+ "sha2",
  "shell-words",
  "tauri",
  "tauri-build",
