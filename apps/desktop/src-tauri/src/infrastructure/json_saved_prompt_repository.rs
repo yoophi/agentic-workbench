@@ -2,7 +2,10 @@ use std::{fs, path::PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::domain::{saved_prompt::SavedPrompt, saved_prompt_repository::SavedPromptRepository};
+use crate::{
+    domain::{saved_prompt::SavedPrompt, saved_prompt_repository::SavedPromptRepository},
+    infrastructure::json_store::{load_json_vec, save_json_vec},
+};
 
 pub struct JsonSavedPromptRepository {
     store_path: PathBuf,
@@ -26,22 +29,10 @@ impl JsonSavedPromptRepository {
 
 impl SavedPromptRepository for JsonSavedPromptRepository {
     fn load_saved_prompts(&self) -> Result<Vec<SavedPrompt>, String> {
-        if !self.store_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let contents = fs::read_to_string(&self.store_path)
-            .map_err(|error| format!("Failed to read saved prompts store: {error}"))?;
-
-        serde_json::from_str(&contents)
-            .map_err(|error| format!("Failed to parse saved prompts store: {error}"))
+        load_json_vec(&self.store_path, "saved prompts")
     }
 
     fn save_saved_prompts(&self, prompts: &[SavedPrompt]) -> Result<(), String> {
-        let contents = serde_json::to_string_pretty(prompts)
-            .map_err(|error| format!("Failed to serialize saved prompts: {error}"))?;
-
-        fs::write(&self.store_path, contents)
-            .map_err(|error| format!("Failed to write saved prompts store: {error}"))
+        save_json_vec(&self.store_path, "saved prompts", prompts)
     }
 }
