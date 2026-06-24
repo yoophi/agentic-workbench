@@ -390,13 +390,14 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   async function respondToPermission(permissionId: string, optionId: string) {
     if (!activeRunId) {
       setError("응답할 active run이 없습니다.");
-      return;
+      throw new Error("응답할 active run이 없습니다.");
     }
 
     try {
       await respondAgentPermission(activeRunId, permissionId, optionId);
     } catch (caughtError) {
       setError(String(caughtError));
+      throw caughtError;
     }
   }
 
@@ -839,7 +840,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
 
       <PermissionRequestDialog
         permission={pendingPermission}
-        onSelect={(permissionId, optionId) => void respondToPermission(permissionId, optionId)}
+        onSelect={respondToPermission}
       />
     </div>
   );
@@ -1025,9 +1026,34 @@ function PermissionRequestDialog({
   onSelect,
 }: {
   permission: Extract<RunEvent, { type: "permission" }> | null;
-  onSelect: (permissionId: string, optionId: string) => void;
+  onSelect: (permissionId: string, optionId: string) => Promise<void>;
 }) {
   const permissionId = permission?.permissionId;
+  const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(null);
+  const submittingPermissionIdRef = useRef<string | null>(null);
+  const isSubmitting =
+    submittingPermissionIdRef.current === permissionId && submittingOptionId !== null;
+
+  useEffect(() => {
+    submittingPermissionIdRef.current = null;
+    setSubmittingOptionId(null);
+  }, [permissionId]);
+
+  async function submitPermission(optionId: string) {
+    if (!permissionId || submittingPermissionIdRef.current === permissionId) {
+      return;
+    }
+
+    submittingPermissionIdRef.current = permissionId;
+    setSubmittingOptionId(optionId);
+
+    try {
+      await onSelect(permissionId, optionId);
+    } catch {
+      submittingPermissionIdRef.current = null;
+      setSubmittingOptionId(null);
+    }
+  }
 
   return (
     <Dialog open={Boolean(permissionId)}>
@@ -1054,13 +1080,12 @@ function PermissionRequestDialog({
               key={option.optionId}
               type="button"
               variant={option.kind.startsWith("reject") ? "outline" : "default"}
-              onClick={() => {
-                if (permissionId) {
-                  onSelect(permissionId, option.optionId);
-                }
-              }}
+              disabled={isSubmitting}
+              onClick={() => void submitPermission(option.optionId)}
             >
-              {option.name || option.kind || option.optionId}
+              {submittingOptionId === option.optionId
+                ? "Submitting..."
+                : option.name || option.kind || option.optionId}
             </Button>
           ))}
         </DialogFooter>
