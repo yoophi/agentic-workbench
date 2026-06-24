@@ -18,6 +18,7 @@ import {
   listenRunEvents,
   listAgents,
   listProviderSessions,
+  respondAgentPermission,
   sendPromptToRun,
   startAgentRun,
 } from "@/entities/agent-run/api/agent-run-repository";
@@ -28,7 +29,13 @@ import {
   toTimelineItem,
 } from "@/entities/agent-run/model";
 import type { TimelineRunEvent } from "@/entities/agent-run/model";
-import type { EventGroup, ProviderSession, RunEvent, TimelineItem } from "@/entities/agent-run/model";
+import type {
+  EventGroup,
+  PermissionMode,
+  ProviderSession,
+  RunEvent,
+  TimelineItem,
+} from "@/entities/agent-run/model";
 import {
   addUserMessage,
   moveQueuedPrompt as reorderQueuedPrompt,
@@ -75,6 +82,7 @@ import { Steps, StepsContent, StepsItem, StepsTrigger } from "@/components/ui/st
 import { SystemMessage } from "@/components/ui/system-message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
 type AgentRunPanelProps = {
   workingDirectory: string;
@@ -83,10 +91,48 @@ type AgentRunPanelProps = {
 
 const defaultPrompt = "";
 
+const permissionModeOptions: Array<{
+  value: PermissionMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "default",
+    label: "Default",
+    description: "Use the agent's normal approval behavior.",
+  },
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Use automatic approval mode when the agent supports it.",
+  },
+  {
+    value: "readOnly",
+    label: "Read-only",
+    description: "Prefer analysis without unapproved edits.",
+  },
+  {
+    value: "plan",
+    label: "Plan",
+    description: "Prefer planning or read-only behavior before edits.",
+  },
+  {
+    value: "acceptEdits",
+    label: "Accept edits",
+    description: "Allow supported agents to edit files without each edit prompt.",
+  },
+  {
+    value: "dangerouslySkipAllPermissions",
+    label: "Danger full access",
+    description: "Use only in isolated workspaces.",
+  },
+];
+
 export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [sessionMode, setSessionMode] = useState<"new" | "reuse">("new");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("default");
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -219,6 +265,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     usageContext && usageContext.size > 0
       ? Math.min(100, Math.round((usageContext.used / usageContext.size) * 100))
       : null;
+  const pendingPermission = useMemo(() => findPendingPermission(items), [items]);
   const canStartRun = Boolean(
     selectedAgentId &&
       prompt.trim() &&
@@ -255,7 +302,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         agentId: selectedAgentId,
         cwd: workingDirectory,
         stdioBufferLimitMb: 50,
-        autoAllow: true,
+        permissionMode,
         ...(reuseSession
           ? { resumeSessionId: selectedSessionId, resumePolicy: "resumeIfAvailable" }
           : {}),
@@ -326,6 +373,14 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
       setIsRunning(false);
       activeRunIdRef.current = null;
       setActiveRunId(null);
+    }
+  }
+
+  async function respondToPermission(permissionId: string, optionId: string) {
+    try {
+      await respondAgentPermission(permissionId, optionId);
+    } catch (caughtError) {
+      setError(String(caughtError));
     }
   }
 
@@ -447,14 +502,18 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
                   <Badge variant={isRunning ? "default" : "secondary"}>
                     {isRunning ? "Running" : "Idle"}
                   </Badge>
-                  <span className="break-all font-mono text-xs text-muted-foreground">
-                    cwd={workingDirectory}
-                  </span>
+                  <EllipsisPopoverText
+                    value={`cwd=${workingDirectory}`}
+                    className="max-w-full font-mono text-xs text-muted-foreground"
+                    contentClassName="font-mono text-xs"
+                  />
                 </div>
                 {selectedAgent && (
-                  <span className="break-all font-mono text-xs text-muted-foreground">
-                    command={selectedAgent.command}
-                  </span>
+                  <EllipsisPopoverText
+                    value={`command=${selectedAgent.command}`}
+                    className="font-mono text-xs text-muted-foreground"
+                    contentClassName="font-mono text-xs"
+                  />
                 )}
                 {error && (
                   <SystemMessage variant="error" fill>
@@ -530,6 +589,30 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         isLoading={isRunning}
         className="shrink-0 rounded-lg"
       >
+        <div className="flex flex-wrap items-center gap-2 border-b px-2 py-2">
+          <span className="text-xs font-medium text-muted-foreground">Permission mode</span>
+          <Select
+            value={permissionMode}
+            onValueChange={(value) => setPermissionMode(value as PermissionMode)}
+            disabled={isRunning}
+          >
+            <SelectTrigger className="h-8 w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {permissionModeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {permissionModeOptions.find((option) => option.value === permissionMode)?.description}
+          </span>
+        </div>
         <PromptInputTextarea placeholder="선택한 worktree에서 실행할 작업을 입력하세요." />
         {queuedPrompts.length > 0 && (
           <div className="flex flex-col gap-2 px-2 pb-2">
@@ -690,7 +773,77 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PermissionRequestDialog
+        permission={pendingPermission}
+        onSelect={(permissionId, optionId) => void respondToPermission(permissionId, optionId)}
+      />
     </div>
+  );
+}
+
+function findPendingPermission(items: TimelineItem[]) {
+  const pending = new Map<string, Extract<RunEvent, { type: "permission" }>>();
+  for (const item of items) {
+    if (item.event.type !== "permission" || !item.event.permissionId) {
+      continue;
+    }
+    if (item.event.requiresResponse) {
+      pending.set(item.event.permissionId, item.event);
+    } else {
+      pending.delete(item.event.permissionId);
+    }
+  }
+  const pendingPermissions = Array.from(pending.values());
+  return pendingPermissions[pendingPermissions.length - 1] ?? null;
+}
+
+function PermissionRequestDialog({
+  permission,
+  onSelect,
+}: {
+  permission: Extract<RunEvent, { type: "permission" }> | null;
+  onSelect: (permissionId: string, optionId: string) => void;
+}) {
+  const permissionId = permission?.permissionId;
+
+  return (
+    <Dialog open={Boolean(permissionId)}>
+      <DialogContent showCloseButton={false} className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Permission required</DialogTitle>
+          <DialogDescription>
+            Agent가 작업을 계속하려면 아래 요청에 대한 결정을 선택해야 합니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="rounded-md border bg-muted/40 p-3">
+            <div className="text-sm font-medium">{permission?.title || "Tool request"}</div>
+            {permission?.input !== undefined && (
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border bg-background p-3 font-mono text-xs">
+                {JSON.stringify(permission.input, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="flex-wrap">
+          {permission?.options.map((option) => (
+            <Button
+              key={option.optionId}
+              type="button"
+              variant={option.kind.startsWith("reject") ? "outline" : "default"}
+              onClick={() => {
+                if (permissionId) {
+                  onSelect(permissionId, option.optionId);
+                }
+              }}
+            >
+              {option.name || option.kind || option.optionId}
+            </Button>
+          ))}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -807,7 +960,13 @@ function ToolStep({ item }: { item: TimelineItem }) {
         {locations.map((path) => (
           <StepsItem key={path}>
             <span className="font-medium text-foreground">path</span>{" "}
-            <code className="break-all rounded bg-background px-1.5 py-0.5 font-mono text-xs">{path}</code>
+            <code className="inline-block max-w-full rounded bg-background px-1.5 py-0.5 align-bottom font-mono text-xs">
+              <EllipsisPopoverText
+                value={path}
+                className="font-mono text-xs"
+                contentClassName="font-mono text-xs"
+              />
+            </code>
           </StepsItem>
         ))}
         {!toolCallId && locations.length === 0 && item.body && (

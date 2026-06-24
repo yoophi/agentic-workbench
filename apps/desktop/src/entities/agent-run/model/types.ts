@@ -16,6 +16,7 @@ export type AgentRunRequest = {
   autoAllow?: boolean;
   resumeSessionId?: string;
   resumePolicy?: ResumePolicy;
+  permissionMode?: PermissionMode;
 };
 
 /** provider가 로컬에 남긴 네이티브 세션 한 건의 요약(백엔드 camelCase와 일치). */
@@ -32,6 +33,14 @@ export type ProviderSession = {
   branch: string | null;
   source: string | null;
 };
+
+export type PermissionMode =
+  | "default"
+  | "auto"
+  | "readOnly"
+  | "plan"
+  | "acceptEdits"
+  | "dangerouslySkipAllPermissions";
 
 export type AgentRun = {
   id: string;
