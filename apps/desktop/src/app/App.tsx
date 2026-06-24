@@ -8,16 +8,21 @@ import {
   listProjects,
   updateProject,
 } from "@/entities/project/api/project-repository";
-import { listGitWorktrees } from "@/entities/project/api/git-worktree-repository";
+import {
+  listGitWorktrees,
+  openWorktreeWindow,
+} from "@/entities/project/api/git-worktree-repository";
 import { projectQueryKeys } from "@/entities/project/api/query-keys";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
 import type { Project, ProjectInput } from "@/entities/project/model/types";
 import { DeleteProjectDialog } from "@/features/project-delete/ui/delete-project-dialog";
 import { ProjectFormDialog } from "@/features/project-form/ui/project-form-dialog";
+import type { OpenWorktreeMode } from "@/features/project-worktree/ui/project-worktree-card";
 import { ProjectDetailPage } from "@/pages/project-detail/ui/project-detail-page";
 import { ProjectListPage } from "@/pages/project-list/ui/project-list-page";
 import { ProjectWorktreeSessionPage } from "@/pages/project-worktree-session/ui/project-worktree-session-page";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function App() {
   const navigate = useNavigate();
@@ -86,6 +91,23 @@ export function App() {
     }
   }
 
+  function openWorktree(
+    project: Project,
+    worktree: GitWorktree,
+    mode: OpenWorktreeMode,
+  ) {
+    if (mode === "current") {
+      navigate(
+        `/projects/${project.id}/worktrees/${encodeURIComponent(worktree.path)}`,
+      );
+      return;
+    }
+
+    void openWorktreeWindow(project.id, worktree.path, mode).catch((caughtError) =>
+      setError(String(caughtError)),
+    );
+  }
+
   async function confirmDeleteProject() {
     if (!deletingProject) {
       return;
@@ -101,9 +123,16 @@ export function App() {
     }
   }
 
+  const isSessionWindow = location.pathname.startsWith("/session/");
+
   return (
     <main className="min-h-svh bg-muted/30 p-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div
+        className={cn(
+          "mx-auto flex w-full flex-col gap-6",
+          isSessionWindow ? "max-w-none" : "max-w-6xl",
+        )}
+      >
         {error && (
           <p className="rounded-md border bg-background px-3 py-2 text-sm text-destructive">
             {error}
@@ -134,11 +163,7 @@ export function App() {
                 onBack={() => navigate("/")}
                 onEditProject={openEditDialog}
                 onDeleteProject={openDeleteDialog}
-                onOpenWorktree={(project, worktree) =>
-                  navigate(
-                    `/projects/${project.id}/worktrees/${encodeURIComponent(worktree.path)}`,
-                  )
-                }
+                onOpenWorktree={openWorktree}
               />
             }
           />
@@ -149,6 +174,16 @@ export function App() {
                 projects={projects}
                 isLoading={projectsQuery.isLoading}
                 onBack={(projectId) => navigate(`/projects/${projectId}`)}
+              />
+            }
+          />
+          <Route
+            path="/session/:projectId/:worktreePath"
+            element={
+              <ProjectWorktreeSessionRoute
+                projects={projects}
+                isLoading={projectsQuery.isLoading}
+                standalone
               />
             }
           />
@@ -194,7 +229,11 @@ function ProjectDetailRoute({
   onBack: () => void;
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
-  onOpenWorktree: (project: Project, worktree: GitWorktree) => void;
+  onOpenWorktree: (
+    project: Project,
+    worktree: GitWorktree,
+    mode: OpenWorktreeMode,
+  ) => void;
 }) {
   const { projectId } = useParams();
   const project = projects.find((project) => project.id === projectId);
@@ -206,7 +245,7 @@ function ProjectDetailRoute({
         onBack={onBack}
         onEditProject={onEditProject}
         onDeleteProject={onDeleteProject}
-        onOpenWorktree={(worktree) => onOpenWorktree(project, worktree)}
+        onOpenWorktree={(worktree, mode) => onOpenWorktree(project, worktree, mode)}
       />
     );
   }
@@ -229,10 +268,12 @@ function ProjectWorktreeSessionRoute({
   projects,
   isLoading,
   onBack,
+  standalone = false,
 }: {
   projects: Project[];
   isLoading: boolean;
-  onBack: (projectId: string) => void;
+  onBack?: (projectId: string) => void;
+  standalone?: boolean;
 }) {
   const { projectId, worktreePath } = useParams();
   const project = projects.find((project) => project.id === projectId);
@@ -253,7 +294,7 @@ function ProjectWorktreeSessionRoute({
       <ProjectWorktreeSessionPage
         project={project}
         worktree={worktree}
-        onBack={() => onBack(project.id)}
+        onBack={standalone || !onBack ? undefined : () => onBack(project.id)}
       />
     );
   }
@@ -265,14 +306,16 @@ function ProjectWorktreeSessionRoute({
           ? "작업 화면을 불러오는 중입니다."
           : "선택한 worktree를 찾을 수 없습니다."}
       </p>
-      <Button
-        type="button"
-        variant="outline"
-        className="w-fit"
-        onClick={() => (projectId ? onBack(projectId) : undefined)}
-      >
-        프로젝트
-      </Button>
+      {!standalone && onBack && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          onClick={() => (projectId ? onBack(projectId) : undefined)}
+        >
+          프로젝트
+        </Button>
+      )}
     </div>
   );
 }

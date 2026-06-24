@@ -22,3 +22,17 @@ export async function deleteGitWorktree(
 ) {
   return invoke("delete_git_worktree", { workingDirectory, path });
 }
+
+export type OpenWorktreeWindowMode = "window" | "tab";
+
+export async function openWorktreeWindow(
+  projectId: string,
+  worktreePath: string,
+  mode: OpenWorktreeWindowMode,
+) {
+  return invoke<void>("open_worktree_window", {
+    projectId,
+    worktreePath,
+    mode,
+  });
+}

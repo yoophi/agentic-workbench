@@ -1,9 +1,12 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AppWindowIcon,
   BotIcon,
+  GalleryHorizontalEndIcon,
   GitBranchPlusIcon,
   GitCommitIcon,
+  PanelTopIcon,
   RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -29,6 +32,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Field,
   FieldDescription,
   FieldError,
@@ -47,9 +56,11 @@ import {
 } from "@/components/ui/table";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
+export type OpenWorktreeMode = "window" | "tab" | "current";
+
 type ProjectWorktreeCardProps = {
   workingDirectory: string;
-  onOpenWorktree?: (worktree: GitWorktree) => void;
+  onOpenWorktree?: (worktree: GitWorktree, mode: OpenWorktreeMode) => void;
 };
 
 const emptyForm: GitWorktreeCreateInput = {
@@ -257,15 +268,38 @@ export function ProjectWorktreeCard({
                     <TableCell>
                       <div className="flex justify-end gap-1">
                         {onOpenWorktree && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => onOpenWorktree(worktree)}
-                            aria-label={`${worktree.path} worktree 작업 화면 열기`}
-                          >
-                            <BotIcon />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`${worktree.path} worktree 작업 화면 열기`}
+                              >
+                                <BotIcon />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onSelect={() => onOpenWorktree(worktree, "window")}
+                              >
+                                <AppWindowIcon />
+                                새 창에서 열기
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => onOpenWorktree(worktree, "tab")}
+                              >
+                                <GalleryHorizontalEndIcon />
+                                새 탭에서 열기
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => onOpenWorktree(worktree, "current")}
+                              >
+                                <PanelTopIcon />
+                                현재 창에서 열기
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                         <Button
                           type="button"
