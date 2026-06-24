@@ -101,6 +101,33 @@ export const AgentRun: Story = {
   ),
 };
 
+export const AgentRunResizablePrompt: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story: "Shows the workspace in a constrained viewport so the bottom prompt panel resize handle and textarea resizing can be inspected.",
+      },
+    },
+  },
+  render: () => (
+    <div className="mx-auto h-[720px] max-w-5xl">
+      <AgentRunPanel
+        workingDirectory="/Users/yoophi/project/worktrees/acp-minimal-app/resizable-prompt-story"
+        scrollHeader={
+          <Card>
+            <CardHeader>
+              <CardTitle>Resizable prompt workspace</CardTitle>
+              <CardDescription>
+                Drag the small handle above the prompt area to adjust the bottom panel height.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        }
+      />
+    </div>
+  ),
+};
+
 export const AgentRunNarrowLongPath: Story = {
   parameters: {
     viewport: {

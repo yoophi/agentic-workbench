@@ -13,6 +13,9 @@
 - Put domain models, domain API adapters, and domain-specific helpers in `entities`.
 - Put reusable cross-domain utilities and UI primitives in `shared` when they are not shadcn/ui registry components.
 - Keep shadcn/ui generated components under `components/ui` and import them from there.
+- When creating components, design them for reuse instead of coupling them to one screen unless the component is truly screen-specific.
+- Register reusable components in Storybook.
+- Manage Storybook stories according to atomic design categories: atoms, molecules, organisms, and pages.
 
 ## Tauri Backend Architecture
 
