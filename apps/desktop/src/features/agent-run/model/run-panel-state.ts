@@ -133,6 +133,20 @@ export function updateQueuedPrompt(
   return { queue: nextQueue, updated };
 }
 
+export function buildSteerPrompt(originalPrompt: string, steerPrompt: string) {
+  return [
+    "The previous prompt was interrupted because the user wants to steer the task.",
+    "",
+    "## Original prompt",
+    originalPrompt.trim(),
+    "",
+    "## Steering instruction",
+    steerPrompt.trim(),
+    "",
+    "Continue from the original prompt, but follow the steering instruction above.",
+  ].join("\n");
+}
+
 function finishRun(state: RunEventState): RunEventState {
   return {
     ...state,

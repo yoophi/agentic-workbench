@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addUserMessage,
   applyRunEvent,
+  buildSteerPrompt,
   moveQueuedPrompt,
   removeUserMessage,
   updateQueuedPrompt,
@@ -99,5 +100,11 @@ describe("run panel state", () => {
 
     expect(withUserMessage).toHaveLength(1);
     expect(nextItems).toEqual([]);
+  });
+
+  it("builds a steer prompt with separate original and steering sections", () => {
+    expect(buildSteerPrompt(" original task ", " new direction ")).toContain(
+      "## Original prompt\noriginal task\n\n## Steering instruction\nnew direction",
+    );
   });
 });

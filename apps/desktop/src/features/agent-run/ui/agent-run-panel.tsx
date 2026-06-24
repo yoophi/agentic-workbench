@@ -43,6 +43,7 @@ import type {
 } from "@/entities/agent-run/model";
 import {
   addUserMessage,
+  buildSteerPrompt,
   moveQueuedPrompt as reorderQueuedPrompt,
   removeUserMessage,
   updateQueuedPrompt,
@@ -149,6 +150,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isAwaitingPromptResponse, setIsAwaitingPromptResponse] = useState(false);
+  const [directPrompt, setDirectPrompt] = useState<string | null>(null);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [filter, setFilter] = useState<EventGroup | "all">("all");
   const [items, setItems] = useState<TimelineItem[]>([]);
@@ -218,6 +220,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
       if (timelineEvent.type === "error") {
         setIsAwaitingPromptResponse(false);
         setQueuedPrompts([]);
+        setDirectPrompt(null);
         setIsRunning(false);
         activeRunIdRef.current = null;
         setActiveRunId(null);
@@ -234,6 +237,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         if (["completed", "cancelled"].includes(timelineEvent.status)) {
           setIsAwaitingPromptResponse(false);
           setQueuedPrompts([]);
+          setDirectPrompt(null);
           setIsRunning(false);
           activeRunIdRef.current = null;
           setActiveRunId(null);
@@ -284,12 +288,22 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
       (sessionMode === "new" || selectedSessionId),
   );
   const canQueuePrompt = Boolean(activeRunId && isRunning && prompt.trim());
+  const canSteerPrompt = Boolean(
+    activeRunId && isRunning && directPrompt?.trim() && prompt.trim(),
+  );
   const canCancel = Boolean(activeRunId && isRunning);
 
   async function run() {
     const goal = prompt.trim();
+    const started = await startRun(goal);
+    if (started) {
+      setPrompt(defaultPrompt);
+    }
+  }
+
+  async function startRun(goal: string) {
     if (!selectedAgentId || !goal) {
-      return;
+      return false;
     }
 
     const runId = crypto.randomUUID();
@@ -297,11 +311,11 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     setItems([]);
     setQueuedPrompts([]);
     setUsageContext(null);
+    setDirectPrompt(goal);
     activeRunIdRef.current = runId;
     setActiveRunId(runId);
     setIsRunning(true);
     setIsAwaitingPromptResponse(true);
-    setPrompt(defaultPrompt);
     setItems((currentItems) => addUserMessage(currentItems, runId, goal));
 
     const reuseSession = sessionMode === "reuse" && Boolean(selectedSessionId);
@@ -318,14 +332,17 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
           ? { resumeSessionId: selectedSessionId, resumePolicy: "resumeIfAvailable" }
           : {}),
       });
+      return true;
     } catch (caughtError) {
       setError(String(caughtError));
       setPrompt(goal);
       setItems((currentItems) => removeUserMessage(currentItems, runId, goal));
+      setDirectPrompt(null);
       setIsAwaitingPromptResponse(false);
       setIsRunning(false);
       activeRunIdRef.current = null;
       setActiveRunId(null);
+      return false;
     }
   }
 
@@ -380,10 +397,37 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
       setError(String(caughtError));
     } finally {
       setQueuedPrompts([]);
+      setDirectPrompt(null);
       setIsAwaitingPromptResponse(false);
       setIsRunning(false);
       activeRunIdRef.current = null;
       setActiveRunId(null);
+    }
+  }
+
+  async function steer() {
+    const steerPrompt = prompt.trim();
+    const originalPrompt = directPrompt?.trim();
+    const runIdToCancel = activeRunId;
+
+    if (!runIdToCancel || !originalPrompt || !steerPrompt) {
+      return;
+    }
+
+    const nextGoal = buildSteerPrompt(originalPrompt, steerPrompt);
+    setError(null);
+    setPrompt(defaultPrompt);
+    setQueuedPrompts([]);
+
+    try {
+      await cancelAgentRun(runIdToCancel);
+      const started = await startRun(nextGoal);
+      if (!started) {
+        setPrompt(steerPrompt);
+      }
+    } catch (caughtError) {
+      setError(String(caughtError));
+      setPrompt(steerPrompt);
     }
   }
 
@@ -754,8 +798,8 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
             <span className="min-w-0 text-xs text-muted-foreground">
               {isRunning
                 ? isAwaitingPromptResponse
-                  ? "현재 prompt 처리 중입니다. Enter로 다음 prompt를 queue에 추가합니다."
-                  : "다음 prompt를 바로 보낼 수 있습니다. Enter로 queue에 추가합니다."
+                  ? "Enter는 queue에 추가합니다. Steer는 현재 실행을 중단하고 새 지시로 재실행합니다."
+                  : "Enter는 queue에 추가합니다. Steer는 queue와 별도로 현재 실행을 재지시합니다."
                 : "Enter로 실행, Shift+Enter로 줄바꿈"}
             </span>
             <PromptInputActions className="justify-end">
@@ -765,6 +809,18 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
                     <Button type="button" size="sm" disabled={!canQueuePrompt} onClick={enqueuePrompt}>
                       <PlayIcon data-icon="inline-start" />
                       Queue
+                    </Button>
+                  </PromptInputAction>
+                  <PromptInputAction tooltip="Cancel and steer">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!canSteerPrompt}
+                      onClick={() => void steer()}
+                    >
+                      <PencilIcon data-icon="inline-start" />
+                      Steer
                     </Button>
                   </PromptInputAction>
                   <PromptInputAction tooltip="Cancel run">
