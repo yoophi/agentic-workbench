@@ -193,15 +193,15 @@ fn open_url_with_system_browser(url: &str) -> Result<(), String> {
 }
 
 /// 클라이언트가 보낸 run 요청을 실행 직전 형태로 정규화한다. run_id를 보장하고
-/// 아직 지원하지 않는 필드(workspace/checkout/ralph_loop)는 비운다.
-/// 단, resume_session_id/resume_policy는 **보존**해야 기존 세션 재사용이 동작한다.
+/// 아직 지원하지 않는 필드(workspace/checkout)는 비운다.
+/// 단, resume_session_id/resume_policy와 ralph_loop는 **보존**해야 세션 재사용과
+/// 반복 실행이 동작한다.
 fn normalize_run_request(mut request: AgentRunRequest) -> AgentRunRequest {
     if request.run_id.as_deref().is_none_or(str::is_empty) {
         request.run_id = Some(uuid::Uuid::new_v4().to_string());
     }
     request.workspace_id = None;
     request.checkout_id = None;
-    request.ralph_loop = None;
     request
 }
 
@@ -289,7 +289,7 @@ pub async fn respond_agent_permission(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::run::ResumePolicy;
+    use crate::domain::run::{RalphLoopRequest, ResumePolicy};
 
     fn sample_request() -> AgentRunRequest {
         AgentRunRequest {
@@ -305,7 +305,14 @@ mod tests {
             resume_session_id: Some("sess-1".into()),
             resume_policy: Some(ResumePolicy::ResumeIfAvailable),
             permission_mode: None,
-            ralph_loop: None,
+            ralph_loop: Some(RalphLoopRequest {
+                enabled: true,
+                max_iterations: 2,
+                prompt_template: "continue".into(),
+                stop_on_error: true,
+                stop_on_permission: true,
+                delay_ms: 0,
+            }),
         }
     }
 
@@ -324,7 +331,17 @@ mod tests {
         assert!(out.run_id.is_some_and(|id| !id.is_empty()));
         assert!(out.workspace_id.is_none());
         assert!(out.checkout_id.is_none());
-        assert!(out.ralph_loop.is_none());
+    }
+
+    #[test]
+    fn normalize_preserves_ralph_loop() {
+        let out = normalize_run_request(sample_request());
+        let loop_request = out
+            .ralph_loop
+            .expect("ralph loop request should be preserved");
+        assert!(loop_request.enabled);
+        assert_eq!(loop_request.max_iterations, 2);
+        assert_eq!(loop_request.prompt_template, "continue");
     }
 
     #[test]

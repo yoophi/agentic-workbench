@@ -38,6 +38,7 @@ import type {
   EventGroup,
   PermissionMode,
   ProviderSession,
+  RalphLoopRequest,
   RunEvent,
   TimelineItem,
 } from "@/entities/agent-run/model";
@@ -70,6 +71,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Message, MessageAvatar, MessageContent } from "@/components/ui/message";
+import { Input } from "@/components/ui/input";
 import {
   PromptInput,
   PromptInputAction,
@@ -97,6 +99,9 @@ type AgentRunPanelProps = {
 };
 
 const defaultPrompt = "";
+const defaultRalphLoopPrompt =
+  "Continue the current Ralph loop. Pick the next unfinished task from the current goal, report progress, and stop if the work is complete or blocked.";
+const ralphLoopIterationOptions = ["1", "2", "3", "5", "8"];
 const PROMPT_PANEL_DEFAULT_HEIGHT = 300;
 const PROMPT_PANEL_MIN_HEIGHT = 180;
 const PROMPT_PANEL_MAX_HEIGHT = 560;
@@ -146,6 +151,11 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   const [sessionMode, setSessionMode] = useState<"new" | "reuse">("new");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("default");
+  const [isRalphLoopEnabled, setIsRalphLoopEnabled] = useState(false);
+  const [ralphLoopMaxIterations, setRalphLoopMaxIterations] = useState("3");
+  const [ralphLoopPromptTemplate, setRalphLoopPromptTemplate] = useState(
+    defaultRalphLoopPrompt,
+  );
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -293,6 +303,26 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
   );
   const canCancel = Boolean(activeRunId && isRunning);
 
+  const ralphLoopRequest = useMemo<RalphLoopRequest | undefined>(() => {
+    if (!isRalphLoopEnabled) {
+      return undefined;
+    }
+
+    const maxIterations = Math.max(
+      1,
+      Number.parseInt(ralphLoopMaxIterations, 10) || 1,
+    );
+
+    return {
+      enabled: true,
+      maxIterations,
+      promptTemplate: ralphLoopPromptTemplate.trim() || defaultRalphLoopPrompt,
+      stopOnError: true,
+      stopOnPermission: true,
+      delayMs: 0,
+    };
+  }, [isRalphLoopEnabled, ralphLoopMaxIterations, ralphLoopPromptTemplate]);
+
   async function run() {
     const goal = prompt.trim();
     const started = await startRun(goal);
@@ -328,6 +358,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         cwd: workingDirectory,
         stdioBufferLimitMb: 50,
         permissionMode,
+        ...(ralphLoopRequest ? { ralphLoop: ralphLoopRequest } : {}),
         ...(reuseSession
           ? { resumeSessionId: selectedSessionId, resumePolicy: "resumeIfAvailable" }
           : {}),
@@ -713,6 +744,44 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
             <span className="min-w-0 flex-1 text-xs text-muted-foreground">
               {permissionModeOptions.find((option) => option.value === permissionMode)?.description}
             </span>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-2">
+            <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Input
+                type="checkbox"
+                checked={isRalphLoopEnabled}
+                disabled={isRunning}
+                onChange={(event) => setIsRalphLoopEnabled(event.target.checked)}
+                className="size-4 p-0"
+                aria-label="Ralph loop 사용"
+              />
+              Ralph loop
+            </label>
+            <Select
+              value={ralphLoopMaxIterations}
+              onValueChange={setRalphLoopMaxIterations}
+              disabled={isRunning || !isRalphLoopEnabled}
+            >
+              <SelectTrigger className="h-8 w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {ralphLoopIterationOptions.map((count) => (
+                    <SelectItem key={count} value={count}>
+                      {count} iterations
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Input
+              value={ralphLoopPromptTemplate}
+              disabled={isRunning || !isRalphLoopEnabled}
+              onChange={(event) => setRalphLoopPromptTemplate(event.target.value)}
+              className="h-8 min-w-52 flex-1 text-xs"
+              placeholder="Loop follow-up prompt"
+            />
           </div>
           <div className="min-h-0 flex-1">
             <PromptInputTextarea
