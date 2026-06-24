@@ -6,6 +6,16 @@ export type AgentDescriptor = {
 
 export type ResumePolicy = "fresh" | "resumeIfAvailable" | "resumeRequired";
 
+/** Ralph loop: 목표가 끝날 때까지 동일 prompt를 자동 반복 실행하는 설정. */
+export type RalphLoopRequest = {
+  enabled: boolean;
+  maxIterations: number;
+  promptTemplate: string;
+  stopOnError: boolean;
+  stopOnPermission: boolean;
+  delayMs: number;
+};
+
 export type AgentRunRequest = {
   runId?: string;
   goal: string;
@@ -19,6 +29,7 @@ export type AgentRunRequest = {
   permissionMode?: PermissionMode;
   modelId?: string;
   contextSize?: ContextSizePreset;
+  ralphLoop?: RalphLoopRequest;
 };
 
 /** provider가 로컬에 남긴 네이티브 세션 한 건의 요약(백엔드 camelCase와 일치). */

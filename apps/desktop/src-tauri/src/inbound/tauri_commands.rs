@@ -16,7 +16,7 @@ use crate::{
         git_worktree::{GitWorktree, GitWorktreeCreateDraft},
         project::{Project, ProjectDraft},
         provider_session::{ProviderSession, SessionScope},
-        run::{AgentRun, AgentRunRequest},
+        run::{AgentRun, AgentRunRequest, RalphLoopRequest},
         saved_prompt::{SavedPrompt, SavedPromptDraft},
     },
     infrastructure::{
@@ -240,7 +240,8 @@ fn open_url_with_system_browser(url: &str) -> Result<(), String> {
 }
 
 /// 클라이언트가 보낸 run 요청을 실행 직전 형태로 정규화한다. run_id를 보장하고
-/// 아직 지원하지 않는 필드(workspace/checkout/ralph_loop)는 비운다.
+/// 아직 지원하지 않는 필드(workspace/checkout)는 비운다. ralph_loop은 안전 범위로
+/// 정규화해 그대로 전달한다.
 /// 단, resume_session_id/resume_policy는 **보존**해야 기존 세션 재사용이 동작한다.
 fn normalize_run_request(mut request: AgentRunRequest) -> AgentRunRequest {
     if request.run_id.as_deref().is_none_or(str::is_empty) {
@@ -248,7 +249,7 @@ fn normalize_run_request(mut request: AgentRunRequest) -> AgentRunRequest {
     }
     request.workspace_id = None;
     request.checkout_id = None;
-    request.ralph_loop = None;
+    request.ralph_loop = request.ralph_loop.map(RalphLoopRequest::sanitized);
     request
 }
 
@@ -373,7 +374,29 @@ mod tests {
         assert!(out.run_id.is_some_and(|id| !id.is_empty()));
         assert!(out.workspace_id.is_none());
         assert!(out.checkout_id.is_none());
-        assert!(out.ralph_loop.is_none());
+    }
+
+    #[test]
+    fn normalize_sanitizes_ralph_loop_into_safe_range() {
+        let mut request = sample_request();
+        request.ralph_loop = Some(RalphLoopRequest {
+            enabled: true,
+            max_iterations: 10_000,
+            prompt_template: "  continue  ".into(),
+            stop_on_error: true,
+            stop_on_permission: false,
+            delay_ms: u64::MAX,
+        });
+
+        let loop_settings = normalize_run_request(request)
+            .ralph_loop
+            .expect("ralph loop should be preserved");
+        assert_eq!(
+            loop_settings.max_iterations,
+            crate::domain::run::MAX_RALPH_ITERATIONS
+        );
+        assert_eq!(loop_settings.delay_ms, crate::domain::run::MAX_RALPH_DELAY_MS);
+        assert_eq!(loop_settings.prompt_template, "continue");
     }
 
     #[test]
