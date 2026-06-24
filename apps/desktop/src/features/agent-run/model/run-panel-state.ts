@@ -170,6 +170,32 @@ export function buildSteerPrompt(originalPrompt: string, steerPrompt: string) {
   ].join("\n");
 }
 
+export type QueuedSteerPlan = {
+  steerPrompt: string;
+  remainingQueue: QueuedPrompt[];
+};
+
+/**
+ * queue에 담긴 특정 prompt를 steer 입력으로 쓰기 위한 계획을 만든다.
+ * - 선택한 prompt만 queue에서 제거하고 나머지 순서는 유지한다.
+ * - 선택한 prompt를 찾지 못하면 null을 반환한다(이미 전송/제거된 경우).
+ */
+export function prepareQueuedSteer(
+  queue: QueuedPrompt[],
+  promptId: string,
+  originalPrompt: string,
+): QueuedSteerPlan | null {
+  const target = queue.find((queuedPrompt) => queuedPrompt.id === promptId);
+  if (!target) {
+    return null;
+  }
+
+  return {
+    steerPrompt: buildSteerPrompt(originalPrompt, target.text),
+    remainingQueue: queue.filter((queuedPrompt) => queuedPrompt.id !== promptId),
+  };
+}
+
 function finishRun(state: RunEventState): RunEventState {
   return {
     ...state,
