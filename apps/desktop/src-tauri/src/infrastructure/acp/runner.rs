@@ -2,7 +2,8 @@ use agent_client_protocol::schema::{
     ProtocolVersion,
     v1::{
         ClientCapabilities, ContentBlock, FileSystemCapabilities, Implementation,
-        InitializeRequest, NewSessionRequest, PromptRequest, StopReason, TextContent,
+        InitializeRequest, LoadSessionRequest, NewSessionRequest, PromptRequest, SessionId,
+        StopReason, TextContent,
     },
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -185,10 +186,16 @@ where
                     message: format!("resuming ACP session {session_id}"),
                 },
             );
-            AcpCreatedSession {
-                session_id,
-                response: Value::Null,
-            }
+            resume_or_create_session(
+                &peer,
+                &workspace,
+                &session_id,
+                init.agent_capabilities.load_session,
+                resume_policy,
+                &run_id,
+                &sink,
+            )
+            .await?
         } else {
             create_agent_session(&peer, &workspace).await?
         };
@@ -745,6 +752,67 @@ fn session_modes_support(response: &Value, mode_id: &str) -> bool {
                 .iter()
                 .any(|mode| mode.get("id").and_then(Value::as_str) == Some(mode_id))
         })
+}
+
+/// 기존 세션을 ACP `session/load`로 agent에 로드한다. agent가 세션을 메모리에
+/// 올려야 이후 `session/prompt`가 동작한다. 호출하지 않으면 agent는 세션을
+/// 모르는 상태라 `-32002 Resource not found`로 응답한다.
+async fn load_agent_session(peer: &RpcPeer, session_id: &str, workspace: &PathBuf) -> Result<Value> {
+    let params = serde_json::to_value(LoadSessionRequest::new(
+        SessionId::new(session_id),
+        workspace.clone(),
+    ))?;
+    let response = peer
+        .request("session/load", params)
+        .await
+        .map_err(rpc_to_anyhow)?;
+    Ok(response)
+}
+
+/// resume 요청을 처리한다. agent가 `loadSession` capability를 광고하면
+/// `session/load`로 재개하고, 그렇지 않거나 로드가 실패하면 정책에 따라
+/// 새 세션으로 폴백(ResumeIfAvailable)하거나 에러를 반환(ResumeRequired)한다.
+async fn resume_or_create_session<S>(
+    peer: &RpcPeer,
+    workspace: &PathBuf,
+    session_id: &str,
+    load_supported: bool,
+    resume_policy: ResumePolicy,
+    run_id: &str,
+    sink: &S,
+) -> Result<AcpCreatedSession>
+where
+    S: RunEventSink,
+{
+    if !load_supported {
+        if !should_reissue_missing_session(resume_policy) {
+            bail!("agent does not support resuming sessions (loadSession capability missing)");
+        }
+        sink.emit(
+            run_id,
+            RunEvent::Diagnostic {
+                message: "agent does not support session/load; starting a new session".to_string(),
+            },
+        );
+        return create_agent_session(peer, workspace).await;
+    }
+
+    match load_agent_session(peer, session_id, workspace).await {
+        Ok(response) => Ok(AcpCreatedSession {
+            session_id: session_id.to_string(),
+            response,
+        }),
+        Err(error) if should_reissue_missing_session(resume_policy) => {
+            sink.emit(
+                run_id,
+                RunEvent::Diagnostic {
+                    message: format!("resume failed ({error}); starting a new session"),
+                },
+            );
+            create_agent_session(peer, workspace).await
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn initialize_request() -> InitializeRequest {
