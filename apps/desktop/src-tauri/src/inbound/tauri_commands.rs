@@ -26,6 +26,7 @@ use crate::{
         git_cli_worktree_provider::GitCliWorktreeProvider,
         json_project_repository::JsonProjectRepository,
         noop_acp_session_store::NoopAcpSessionStore, tauri_run_event_sink::TauriRunEventSink,
+        window_manager,
     },
     ports::{
         agent_catalog::AgentCatalog,
@@ -124,6 +125,16 @@ pub fn list_provider_sessions(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn open_worktree_window(
+    app: AppHandle,
+    project_id: String,
+    worktree_path: String,
+    mode: String,
+) -> Result<(), String> {
+    window_manager::open_session_window(&app, &project_id, &worktree_path, &mode)
+}
+
 /// 클라이언트가 보낸 run 요청을 실행 직전 형태로 정규화한다. run_id를 보장하고
 /// 아직 지원하지 않는 필드(workspace/checkout/ralph_loop)는 비운다.
 /// 단, resume_session_id/resume_policy는 **보존**해야 기존 세션 재사용이 동작한다.
@@ -140,6 +151,7 @@ fn normalize_run_request(mut request: AgentRunRequest) -> AgentRunRequest {
 #[tauri::command]
 pub async fn start_agent_run(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     request: AgentRunRequest,
 ) -> Result<AgentRun, String> {
@@ -155,7 +167,7 @@ pub async fn start_agent_run(
     );
 
     StartAgentRunUseCase::new(registry)
-        .execute(runner, sink, request, None)
+        .execute(runner, sink, request, Some(window.label().to_string()))
         .await
         .map_err(String::from)
 }

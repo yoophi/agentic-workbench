@@ -11,7 +11,10 @@ import { listGitRemotes } from "@/entities/project/api/git-remote-repository";
 import { projectQueryKeys } from "@/entities/project/api/query-keys";
 import type { Project } from "@/entities/project/model/types";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
-import { ProjectWorktreeCard } from "@/features/project-worktree/ui/project-worktree-card";
+import {
+  ProjectWorktreeCard,
+  type OpenWorktreeMode,
+} from "@/features/project-worktree/ui/project-worktree-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +48,7 @@ type ProjectDetailPageProps = {
   onBack: () => void;
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
-  onOpenWorktree: (worktree: GitWorktree) => void;
+  onOpenWorktree: (worktree: GitWorktree, mode: OpenWorktreeMode) => void;
 };
 
 export function ProjectDetailPage({

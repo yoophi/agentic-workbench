@@ -7,11 +7,11 @@ mod ports;
 use inbound::tauri_commands::{
     cancel_agent_run, create_git_worktree, create_project, delete_git_worktree, delete_project,
     list_agents, list_git_branches, list_git_remotes, list_git_worktrees, list_projects,
-    list_provider_sessions, respond_agent_permission, send_prompt_to_run, start_agent_run,
-    update_project,
+    list_provider_sessions, open_worktree_window, respond_agent_permission, send_prompt_to_run,
+    start_agent_run, update_project,
 };
 use infrastructure::agent_session_registry::AppState;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
@@ -26,6 +26,17 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let WindowEvent::Destroyed = event {
+                let label = window.label().to_string();
+                if label.starts_with("session-") {
+                    let state = window.state::<AppState>().inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        state.cancel_runs_owned_by(&label).await;
+                    });
+                }
+            }
+        })
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             list_projects,
@@ -39,6 +50,7 @@ pub fn run() {
             delete_git_worktree,
             list_agents,
             list_provider_sessions,
+            open_worktree_window,
             start_agent_run,
             send_prompt_to_run,
             cancel_agent_run,
