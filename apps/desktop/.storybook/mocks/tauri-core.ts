@@ -154,7 +154,14 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "list_agents":
       return sampleAgents as T;
     case "start_agent_run": {
-      const request = args?.request as { runId?: string; goal?: string; agentId?: string } | undefined;
+      const request = args?.request as
+        | {
+            runId?: string;
+            goal?: string;
+            agentId?: string;
+            ralphLoop?: { enabled?: boolean; maxIterations?: number };
+          }
+        | undefined;
       const runId = String(request?.runId ?? "run-storybook");
       queueMicrotask(() => {
         emitMockEvent(AGENT_RUN_EVENT, {
@@ -176,6 +183,17 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
             text: "Storybook mock response is streaming so the panel can be inspected without launching an ACP process.",
           },
         });
+        if (request?.ralphLoop?.enabled) {
+          const maxIterations = request.ralphLoop.maxIterations ?? 3;
+          emitMockEvent(AGENT_RUN_EVENT, {
+            runId,
+            event: { type: "ralphLoop", iteration: 1, maxIterations, status: "started" },
+          });
+          emitMockEvent(AGENT_RUN_EVENT, {
+            runId,
+            event: { type: "ralphLoop", iteration: 1, maxIterations, status: "completed" },
+          });
+        }
       });
       return {
         id: runId,
