@@ -1,8 +1,10 @@
+import { useCallback, useState } from "react";
 import { ArrowLeftIcon, BotIcon, FolderGit2Icon } from "lucide-react";
 
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
 import type { Project } from "@/entities/project/model/types";
 import { AgentRunPanel } from "@/features/agent-run/ui/agent-run-panel";
+import { WorktreeChangesPanel } from "@/features/worktree-change-review/ui/worktree-changes-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +27,11 @@ export function ProjectWorktreeSessionPage({
   worktree,
   onBack,
 }: ProjectWorktreeSessionPageProps) {
+  const [changesRefreshSignal, setChangesRefreshSignal] = useState(0);
+  const refreshChanges = useCallback(() => {
+    setChangesRefreshSignal((value) => value + 1);
+  }, []);
+
   return (
     <div className="flex h-[calc(100svh-3rem)] min-h-0 flex-col gap-4 overflow-hidden">
       <div className="shrink-0 flex min-w-0 items-center gap-3">
@@ -70,12 +77,18 @@ export function ProjectWorktreeSessionPage({
                 </CardContent>
               </Card>
 
+              <WorktreeChangesPanel
+                workingDirectory={worktree.path}
+                refreshSignal={changesRefreshSignal}
+              />
+
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <BotIcon />
                 ACP 실행
               </div>
             </>
           }
+          onRunSettled={refreshChanges}
         />
       </div>
     </div>

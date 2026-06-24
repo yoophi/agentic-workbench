@@ -110,6 +110,7 @@ import { ExternalLink } from "@/shared/ui/external-link";
 type AgentRunPanelProps = {
   workingDirectory: string;
   scrollHeader?: ReactNode;
+  onRunSettled?: () => void;
 };
 
 const defaultPrompt = "";
@@ -211,7 +212,11 @@ const fallbackModelDescriptions: Record<string, string> = {
   "claude-haiku-4-5": "Use Claude's fast Haiku model.",
 };
 
-export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelProps) {
+export function AgentRunPanel({
+  workingDirectory,
+  scrollHeader,
+  onRunSettled,
+}: AgentRunPanelProps) {
   const queryClient = useQueryClient();
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [sessionMode, setSessionMode] = useState<AgentRunSessionMode>("new");
@@ -434,6 +439,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
         setIsRunning(false);
         activeRunIdRef.current = null;
         setActiveRunId(null);
+        onRunSettled?.();
         return;
       }
 
@@ -451,6 +457,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
           setIsRunning(false);
           activeRunIdRef.current = null;
           setActiveRunId(null);
+          onRunSettled?.();
         }
       }
     });
@@ -458,7 +465,7 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     return () => {
       unlisten();
     };
-  }, []);
+  }, [onRunSettled]);
 
   useEffect(() => {
     if (!activeRunId || !isRunning || isAwaitingPromptResponse || queuedPrompts.length === 0) {

@@ -9,6 +9,7 @@ import { ProjectTable } from "@/features/project-list/ui/project-table";
 import { GitReferenceCombobox } from "@/features/project-worktree/ui/git-reference-combobox";
 import { ProjectWorktreeCard } from "@/features/project-worktree/ui/project-worktree-card";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
+import { WorktreeChangesPanel } from "@/features/worktree-change-review/ui/worktree-changes-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { sampleProjects } from "@/shared/storybook/sample-data";
@@ -94,6 +95,12 @@ export const WorktreeManagement: Story = {
       </div>
     );
   },
+};
+
+export const WorktreeChangeReview: Story = {
+  render: () => (
+    <WorktreeChangesPanel workingDirectory="/Users/yoophi/project/worktrees/acp-minimal-app/storybook" />
+  ),
 };
 
 export const AgentRun: Story = {

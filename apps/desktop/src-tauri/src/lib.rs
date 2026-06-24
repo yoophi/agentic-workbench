@@ -12,6 +12,7 @@ use inbound::tauri_commands::{
     open_external_url, open_worktree_window, respond_agent_permission, save_agent_run_settings,
     send_prompt_to_run, set_run_permission_mode, start_agent_run, update_goal, update_project,
     update_saved_prompt,
+    get_worktree_changes, get_worktree_file_diff,
 };
 use infrastructure::agent_session_registry::AppState;
 use tauri::{Manager, WindowEvent};
@@ -64,6 +65,8 @@ pub fn run() {
             list_git_worktrees,
             create_git_worktree,
             delete_git_worktree,
+            get_worktree_changes,
+            get_worktree_file_diff,
             list_agents,
             list_provider_sessions,
             open_external_url,

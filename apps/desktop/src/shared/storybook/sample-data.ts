@@ -2,6 +2,7 @@ import type { AgentDescriptor } from "@/entities/agent-run/model/types";
 import type { GitBranch } from "@/entities/project/model/git-branch";
 import type { GitRemote } from "@/entities/project/model/git-remote";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
+import type { GitWorktreeChanges } from "@/entities/project/model/git-worktree-changes";
 import type { Project } from "@/entities/project/model/types";
 import type { SavedPrompt } from "@/entities/saved-prompt/model/types";
 
@@ -68,3 +69,31 @@ export const sampleSavedPrompts: SavedPrompt[] = [
     prompt: "현재 변경사항을 검토하고 위험한 부분을 알려주세요.",
   },
 ];
+
+export const sampleWorktreeChanges: GitWorktreeChanges = {
+  workingDirectory: "/Users/yoophi/project/worktrees/acp-minimal-app/storybook",
+  stagedCount: 1,
+  unstagedCount: 1,
+  untrackedCount: 1,
+  conflictedCount: 0,
+  files: [
+    {
+      path: "apps/desktop/src/features/worktree-change-review/ui/worktree-changes-panel.tsx",
+      stagedStatus: "M",
+      unstagedStatus: null,
+      group: "staged",
+    },
+    {
+      path: "apps/desktop/src/pages/project-worktree-session/ui/project-worktree-session-page.tsx",
+      stagedStatus: null,
+      unstagedStatus: "M",
+      group: "unstaged",
+    },
+    {
+      path: "docs/change-review-notes.md",
+      stagedStatus: "?",
+      unstagedStatus: "?",
+      group: "untracked",
+    },
+  ],
+};

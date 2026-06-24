@@ -5,7 +5,7 @@ use tauri::{AppHandle, State};
 use crate::{
     application::{
         agent_run_settings_service, cancel_agent_run::CancelAgentRunUseCase, git_branch_service,
-        git_remote_service, git_worktree_service, goal_service,
+        git_remote_service, git_worktree_changes_service, git_worktree_service, goal_service,
         list_provider_sessions::ListProviderSessionsUseCase, project_service, saved_prompt_service,
         send_prompt::SendPromptUseCase, set_permission_mode::SetPermissionModeUseCase,
         start_agent_run::StartAgentRunUseCase,
@@ -16,6 +16,7 @@ use crate::{
         git_branch::GitBranch,
         git_remote::GitRemote,
         git_worktree::{GitWorktree, GitWorktreeCreateDraft},
+        git_worktree_changes::{GitFileDiff, GitWorktreeChanges},
         goal::{GoalDraft, GoalStatus, GoalUpdate, ThreadGoal},
         project::{Project, ProjectDraft},
         provider_session::{ProviderSession, SessionScope},
@@ -28,6 +29,7 @@ use crate::{
         fs_provider_session_repository::FsProviderSessionRepository,
         git_cli_branch_provider::GitCliBranchProvider,
         git_cli_remote_provider::GitCliRemoteProvider,
+        git_cli_worktree_changes_provider::GitCliWorktreeChangesProvider,
         git_cli_worktree_provider::GitCliWorktreeProvider,
         json_agent_run_settings_repository::JsonAgentRunSettingsRepository,
         json_goal_repository::JsonGoalRepository, json_project_repository::JsonProjectRepository,
@@ -232,6 +234,26 @@ pub fn create_git_worktree(
 #[tauri::command]
 pub fn delete_git_worktree(working_directory: String, path: String) -> Result<(), String> {
     git_worktree_service::delete_git_worktree(&GitCliWorktreeProvider, working_directory, path)
+}
+
+#[tauri::command]
+pub fn get_worktree_changes(working_directory: String) -> Result<GitWorktreeChanges, String> {
+    git_worktree_changes_service::get_worktree_changes(
+        &GitCliWorktreeChangesProvider,
+        working_directory,
+    )
+}
+
+#[tauri::command]
+pub fn get_worktree_file_diff(
+    working_directory: String,
+    path: String,
+) -> Result<GitFileDiff, String> {
+    git_worktree_changes_service::get_worktree_file_diff(
+        &GitCliWorktreeChangesProvider,
+        working_directory,
+        path,
+    )
 }
 
 #[tauri::command]

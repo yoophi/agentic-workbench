@@ -4,6 +4,7 @@ import {
   sampleProjects,
   sampleRemotes,
   sampleSavedPrompts,
+  sampleWorktreeChanges,
   sampleWorktrees,
 } from "../../src/shared/storybook/sample-data";
 import type { SavedPrompt, SavedPromptInput } from "../../src/entities/saved-prompt/model/types";
@@ -73,6 +74,26 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return sampleBranches as T;
     case "list_git_worktrees":
       return sampleWorktrees as T;
+    case "get_worktree_changes":
+      return {
+        ...sampleWorktreeChanges,
+        workingDirectory: String(args?.workingDirectory ?? sampleWorktreeChanges.workingDirectory),
+      } as T;
+    case "get_worktree_file_diff":
+      return {
+        path: String(args?.path ?? "sample.ts"),
+        diff: [
+          "diff --git a/sample.ts b/sample.ts",
+          "index 1111111..2222222 100644",
+          "--- a/sample.ts",
+          "+++ b/sample.ts",
+          "@@ -1,3 +1,3 @@",
+          "-old line",
+          "+new line",
+        ].join("\n"),
+        truncated: false,
+        binary: false,
+      } as T;
     case "list_agents":
       return sampleAgents as T;
     case "start_agent_run": {
