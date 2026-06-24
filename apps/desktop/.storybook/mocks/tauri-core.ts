@@ -3,6 +3,7 @@ import {
   sampleBranches,
   sampleProjects,
   sampleRemotes,
+  sampleSavedPrompts,
   sampleWorktrees,
 } from "../../src/shared/storybook/sample-data";
 import { emitMockEvent } from "./tauri-event";
@@ -22,7 +23,20 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     case "delete_project":
     case "create_git_worktree":
     case "delete_git_worktree":
+    case "delete_saved_prompt":
       return undefined as T;
+    case "list_saved_prompts":
+      return sampleSavedPrompts as T;
+    case "create_saved_prompt":
+      return {
+        id: "saved-storybook-new",
+        ...(args?.input as Record<string, unknown> | undefined),
+      } as T;
+    case "update_saved_prompt":
+      return {
+        id: String(args?.id ?? "saved-storybook-updated"),
+        ...(args?.input as Record<string, unknown> | undefined),
+      } as T;
     case "cancel_agent_run":
       emitMockEvent(AGENT_RUN_EVENT, {
         runId: String(args?.runId ?? "run-storybook"),

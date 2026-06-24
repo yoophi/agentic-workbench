@@ -3,6 +3,7 @@ import type { GitBranch } from "@/entities/project/model/git-branch";
 import type { GitRemote } from "@/entities/project/model/git-remote";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
 import type { Project } from "@/entities/project/model/types";
+import type { SavedPrompt } from "@/entities/saved-prompt/model/types";
 
 export const sampleProjects: Project[] = [
   {
@@ -53,4 +54,17 @@ export const sampleWorktrees: GitWorktree[] = [
 export const sampleAgents: AgentDescriptor[] = [
   { id: "codex", label: "Codex", command: "codex" },
   { id: "claude", label: "Claude Code", command: "claude" },
+];
+
+export const sampleSavedPrompts: SavedPrompt[] = [
+  {
+    id: "saved-continue",
+    label: "Continue",
+    prompt: "이전 결과를 바탕으로 계속 진행해주세요.",
+  },
+  {
+    id: "saved-review",
+    label: "Review",
+    prompt: "현재 변경사항을 검토하고 위험한 부분을 알려주세요.",
+  },
 ];

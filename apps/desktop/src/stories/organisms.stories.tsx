@@ -8,6 +8,7 @@ import { ProjectFormDialog } from "@/features/project-form/ui/project-form-dialo
 import { ProjectTable } from "@/features/project-list/ui/project-table";
 import { GitReferenceCombobox } from "@/features/project-worktree/ui/git-reference-combobox";
 import { ProjectWorktreeCard } from "@/features/project-worktree/ui/project-worktree-card";
+import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { sampleProjects } from "@/shared/storybook/sample-data";
@@ -98,6 +99,22 @@ export const WorktreeManagement: Story = {
 export const AgentRun: Story = {
   render: () => (
     <AgentRunPanel workingDirectory="/Users/yoophi/project/acp-minimal-app" />
+  ),
+};
+
+export const SavedPrompts: Story = {
+  render: () => (
+    <Card className="max-w-3xl">
+      <CardHeader>
+        <CardTitle>Saved prompt toolbar</CardTitle>
+        <CardDescription>
+          Saved prompt query data is supplied by Storybook Tauri mocks.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <SavedPromptToolbar disabled={false} onSendPrompt={() => undefined} />
+      </CardContent>
+    </Card>
   ),
 };
 

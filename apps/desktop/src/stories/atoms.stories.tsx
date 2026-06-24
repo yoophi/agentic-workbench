@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CircularLoader, ClassicLoader, DotsLoader, Loader, PulseDotLoader, PulseLoader, TerminalLoader, TextBlinkLoader, TextDotsLoader, TextShimmerLoader, TypingLoader, WaveLoader, BarsLoader } from "@/components/ui/loader";
+import { PromptSuggestion } from "@/components/ui/prompt-suggestion";
 import { Separator } from "@/components/ui/separator";
 import { SystemMessage } from "@/components/ui/system-message";
 import { Textarea } from "@/components/ui/textarea";
@@ -136,6 +137,19 @@ export const ExternalLinks: Story = {
     <div className="grid max-w-xl gap-3 text-sm">
       <ExternalLink href="https://example.com">Open example.com</ExternalLink>
       <ExternalLink href="/relative/path">Relative link is not opened externally</ExternalLink>
+    </div>
+  ),
+};
+
+export const PromptSuggestions: Story = {
+  render: () => (
+    <div className="flex max-w-2xl flex-wrap gap-2">
+      <PromptSuggestion>Summarize current changes</PromptSuggestion>
+      <PromptSuggestion highlight="fix">Fix failing tests</PromptSuggestion>
+      <PromptSuggestion highlight="agent" size="sm">
+        Continue agent run
+      </PromptSuggestion>
+      <PromptSuggestion disabled>Disabled suggestion</PromptSuggestion>
     </div>
   ),
 };
