@@ -150,6 +150,12 @@ export type RunEvent =
   | { type: "fileSystem"; operation: string; path: string }
   | { type: "terminal"; operation: string; terminalId?: string; message: string }
   | { type: "diagnostic"; message: string }
+  | {
+      type: "ralphLoop";
+      iteration: number;
+      maxIterations: number;
+      status: RalphLoopStatus;
+    }
   | { type: "raw"; method: string; payload: unknown }
   | { type: "error"; message: string };
 
@@ -161,6 +167,8 @@ export type LifecycleStatus =
   | "promptCompleted"
   | "completed"
   | "cancelled";
+
+export type RalphLoopStatus = "started" | "completed" | "failed" | "stopped";
 
 export type PlanEntry = {
   status: string;

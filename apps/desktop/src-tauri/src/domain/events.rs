@@ -58,6 +58,11 @@ pub enum RunEvent {
     Diagnostic {
         message: String,
     },
+    RalphLoop {
+        iteration: usize,
+        max_iterations: usize,
+        status: RalphLoopStatus,
+    },
     Raw {
         method: String,
         payload: Value,
@@ -77,6 +82,15 @@ pub enum LifecycleStatus {
     PromptCompleted,
     Cancelled,
     Completed,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RalphLoopStatus {
+    Started,
+    Completed,
+    Failed,
+    Stopped,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -118,6 +132,27 @@ mod tests {
                 "status": "completed",
                 "title": "Read package.json",
                 "locations": ["/tmp/package.json"]
+            })
+        );
+    }
+
+    #[test]
+    fn ralph_loop_event_serializes_iteration_fields_as_camel_case() {
+        let event = RunEvent::RalphLoop {
+            iteration: 2,
+            max_iterations: 5,
+            status: super::RalphLoopStatus::Completed,
+        };
+
+        let value = serde_json::to_value(event).expect("serialize event");
+
+        assert_eq!(
+            value,
+            json!({
+                "type": "ralphLoop",
+                "iteration": 2,
+                "maxIterations": 5,
+                "status": "completed"
             })
         );
     }

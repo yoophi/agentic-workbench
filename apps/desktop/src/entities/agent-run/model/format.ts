@@ -103,6 +103,19 @@ function buildItem(
       };
     case "diagnostic":
       return { ...base, group: "lifecycle", title: "diagnostic", body: event.message };
+    case "ralphLoop":
+      return {
+        ...base,
+        group: "lifecycle",
+        title: `Ralph loop ${event.iteration}/${event.maxIterations}`,
+        body: formatRalphLoopLine(event),
+        tone:
+          event.status === "failed"
+            ? "danger"
+            : event.status === "completed" || event.status === "stopped"
+              ? "success"
+              : "info",
+      };
     case "lifecycle":
       return {
         ...base,
@@ -269,6 +282,17 @@ function findMatchingLifecycleIndex(items: TimelineItem[], runId: string) {
 
 function formatLifecycleLine(event: Extract<RunEvent, { type: "lifecycle" }>) {
   return `${event.status}: ${event.message}`;
+}
+
+function formatRalphLoopLine(event: Extract<RunEvent, { type: "ralphLoop" }>) {
+  const labels = {
+    started: "started",
+    completed: "completed",
+    failed: "failed",
+    stopped: "stopped at max iterations",
+  } satisfies Record<typeof event.status, string>;
+
+  return `iteration ${event.iteration}/${event.maxIterations}: ${labels[event.status]}`;
 }
 
 function appendLine(current: string, next: string) {

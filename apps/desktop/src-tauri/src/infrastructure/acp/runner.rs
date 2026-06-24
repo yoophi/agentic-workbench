@@ -19,7 +19,7 @@ use tokio::{
 use crate::{
     domain::{
         acp_session::AcpSessionRecord,
-        events::{LifecycleStatus, RunEvent},
+        events::{LifecycleStatus, RalphLoopStatus, RunEvent},
         run::{AgentRunRequest, ContextSizePreset, PermissionMode, RalphLoopRequest, ResumePolicy},
     },
     infrastructure::acp::{
@@ -437,17 +437,24 @@ async fn run_prompt_sequence<S, Fut>(
         }
         sink.emit(
             run_id,
-            RunEvent::Diagnostic {
-                message: format!(
-                    "Ralph loop iteration {iteration}/{} started",
-                    settings.max_iterations
-                ),
+            RunEvent::RalphLoop {
+                iteration,
+                max_iterations: settings.max_iterations,
+                status: RalphLoopStatus::Started,
             },
         );
         if send_loop_prompt(sink.clone(), run_id, prompt.clone(), &mut send_prompt)
             .await
             .is_err()
         {
+            sink.emit(
+                run_id,
+                RunEvent::RalphLoop {
+                    iteration,
+                    max_iterations: settings.max_iterations,
+                    status: RalphLoopStatus::Failed,
+                },
+            );
             if settings.stop_on_error {
                 sink.emit(
                     run_id,
@@ -459,16 +466,24 @@ async fn run_prompt_sequence<S, Fut>(
                 );
                 return;
             }
+        } else {
+            sink.emit(
+                run_id,
+                RunEvent::RalphLoop {
+                    iteration,
+                    max_iterations: settings.max_iterations,
+                    status: RalphLoopStatus::Completed,
+                },
+            );
         }
     }
 
     sink.emit(
         run_id,
-        RunEvent::Diagnostic {
-            message: format!(
-                "Ralph loop stopped: reached max iterations ({})",
-                settings.max_iterations
-            ),
+        RunEvent::RalphLoop {
+            iteration: settings.max_iterations,
+            max_iterations: settings.max_iterations,
+            status: RalphLoopStatus::Stopped,
         },
     );
 }
@@ -1090,7 +1105,7 @@ mod tests {
     };
     use crate::{
         domain::{
-            events::RunEvent,
+            events::{RalphLoopStatus, RunEvent},
             run::{ContextSizePreset, RalphLoopRequest, ResumePolicy},
         },
         ports::event_sink::RunEventSink,
@@ -1234,13 +1249,27 @@ mod tests {
         let events = sink.events.lock().unwrap();
         assert!(events.iter().any(|(_, event)| matches!(
             event,
-            RunEvent::Diagnostic { message }
-                if message == "Ralph loop iteration 1/2 started"
+            RunEvent::RalphLoop {
+                iteration: 1,
+                max_iterations: 2,
+                status: RalphLoopStatus::Started,
+            }
         )));
         assert!(events.iter().any(|(_, event)| matches!(
             event,
-            RunEvent::Diagnostic { message }
-                if message == "Ralph loop stopped: reached max iterations (2)"
+            RunEvent::RalphLoop {
+                iteration: 2,
+                max_iterations: 2,
+                status: RalphLoopStatus::Completed,
+            }
+        )));
+        assert!(events.iter().any(|(_, event)| matches!(
+            event,
+            RunEvent::RalphLoop {
+                iteration: 2,
+                max_iterations: 2,
+                status: RalphLoopStatus::Stopped,
+            }
         )));
     }
 
@@ -1283,13 +1312,19 @@ mod tests {
         )));
         assert!(events.iter().any(|(_, event)| matches!(
             event,
-            RunEvent::Diagnostic { message }
-                if message == "Ralph loop stopped after iteration 1: prompt dispatch failed"
+            RunEvent::RalphLoop {
+                iteration: 1,
+                max_iterations: 3,
+                status: RalphLoopStatus::Failed,
+            }
         )));
         assert!(!events.iter().any(|(_, event)| matches!(
             event,
-            RunEvent::Diagnostic { message }
-                if message == "Ralph loop iteration 2/3 started"
+            RunEvent::RalphLoop {
+                iteration: 2,
+                max_iterations: 3,
+                status: RalphLoopStatus::Started,
+            }
         )));
     }
 }
