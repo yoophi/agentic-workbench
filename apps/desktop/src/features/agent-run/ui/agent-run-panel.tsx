@@ -116,7 +116,10 @@ type AgentRunPanelProps = {
   workingDirectory: string;
   scrollHeader?: ReactNode;
   onRunSettled?: () => void;
+  initialInputMode?: AgentInputMode;
 };
+
+type AgentInputMode = "prompt" | "ralphLoop";
 
 const defaultPrompt = "";
 // 백엔드(MAX_RALPH_ITERATIONS)와 맞춘 자동 반복 상한. 입력은 이 값으로 제한된다.
@@ -222,6 +225,7 @@ export function AgentRunPanel({
   workingDirectory,
   scrollHeader,
   onRunSettled,
+  initialInputMode = "prompt",
 }: AgentRunPanelProps) {
   const queryClient = useQueryClient();
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
@@ -231,7 +235,9 @@ export function AgentRunPanel({
   const [isChangingPermissionMode, setIsChangingPermissionMode] = useState(false);
   const [modelId, setModelId] = useState("providerDefault");
   const [contextSize, setContextSize] = useState<ContextSizePreset>("default");
-  const [ralphLoopEnabled, setRalphLoopEnabled] = useState(false);
+  const [ralphLoopEnabled, setRalphLoopEnabled] = useState(
+    initialInputMode === "ralphLoop",
+  );
   const [ralphMaxIterations, setRalphMaxIterations] = useState(5);
   const [ralphDelaySeconds, setRalphDelaySeconds] = useState(0);
   const [ralphStopOnError, setRalphStopOnError] = useState(true);
@@ -252,6 +258,7 @@ export function AgentRunPanel({
   const [editingPromptText, setEditingPromptText] = useState("");
   const [usageContext, setUsageContext] = useState<UsageContext | null>(null);
   const [promptPanelHeight, setPromptPanelHeight] = useState(PROMPT_PANEL_DEFAULT_HEIGHT);
+  const [inputMode, setInputMode] = useState<AgentInputMode>(initialInputMode);
   const activeRunIdRef = useRef<string | null>(null);
   const activeGoalRef = useRef<ThreadGoal | null>(null);
   const runStartedAtRef = useRef<number | null>(null);
@@ -375,6 +382,7 @@ export function AgentRunPanel({
       setContextSize(savedSettings.contextSize);
       setSessionMode(savedSettings.sessionMode);
       setRalphLoopEnabled(savedSettings.ralphLoop.enabled);
+      setInputMode(savedSettings.ralphLoop.enabled ? "ralphLoop" : "prompt");
       setRalphMaxIterations(
         Math.min(
           RALPH_MAX_ITERATIONS,
@@ -395,6 +403,14 @@ export function AgentRunPanel({
     settingsQuery.isError,
     settingsQuery.isLoading,
   ]);
+
+  function changeInputMode(nextMode: AgentInputMode) {
+    if (isRunning) {
+      return;
+    }
+    setInputMode(nextMode);
+    setRalphLoopEnabled(nextMode === "ralphLoop");
+  }
 
   useEffect(() => {
     if (!settingsHydratedRef.current || !selectedAgentId || !workingDirectory.trim()) {
@@ -1167,11 +1183,11 @@ export function AgentRunPanel({
           value={prompt}
           onValueChange={setPrompt}
           onSubmit={() => {
-            if (isRunning) {
+            if (inputMode === "prompt" && isRunning) {
               enqueuePrompt();
               return;
             }
-            if (canStartRun) {
+            if (!isRunning && canStartRun) {
               void run();
             }
           }}
@@ -1252,94 +1268,112 @@ export function AgentRunPanel({
             </span>
           </div>
           <div
-            className="flex shrink-0 flex-col gap-2 border-b px-2 py-2"
-            onClick={(event) => event.stopPropagation()}
+            className="flex shrink-0 gap-1.5 border-b px-2 py-2"
+            role="tablist"
+            aria-label="Agent input mode"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Ralph loop</span>
-              <Button
-                type="button"
-                size="sm"
-                variant={ralphLoopEnabled ? "default" : "outline"}
-                disabled={isRunning}
-                onClick={() => setRalphLoopEnabled((value) => !value)}
-              >
-                {ralphLoopEnabled ? "On" : "Off"}
-              </Button>
-              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-                목표가 끝날 때까지 loop prompt를 자동 반복 실행합니다. (최대 {RALPH_MAX_ITERATIONS}회)
-              </span>
-            </div>
-            {ralphLoopEnabled && (
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    반복 횟수
-                    <Input
-                      type="number"
-                      min={1}
-                      max={RALPH_MAX_ITERATIONS}
-                      value={ralphMaxIterations}
-                      disabled={isRunning}
-                      className="h-8 w-20"
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        if (Number.isFinite(next)) {
-                          setRalphMaxIterations(
-                            Math.min(RALPH_MAX_ITERATIONS, Math.max(1, Math.round(next))),
-                          );
-                        }
-                      }}
-                    />
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    반복 간 지연(초)
-                    <Input
-                      type="number"
-                      min={0}
-                      value={ralphDelaySeconds}
-                      disabled={isRunning}
-                      className="h-8 w-20"
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        if (Number.isFinite(next)) {
-                          setRalphDelaySeconds(Math.max(0, next));
-                        }
-                      }}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={ralphStopOnError ? "default" : "outline"}
-                    disabled={isRunning}
-                    onClick={() => setRalphStopOnError((value) => !value)}
-                  >
-                    오류 시 중단: {ralphStopOnError ? "On" : "Off"}
-                  </Button>
-                </div>
-                <Textarea
-                  value={ralphPromptTemplate}
-                  disabled={isRunning}
-                  placeholder="반복마다 agent에게 보낼 loop prompt"
-                  className="min-h-16 text-sm"
-                  onChange={(event) => setRalphPromptTemplate(event.target.value)}
-                />
-              </div>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              variant={inputMode === "prompt" ? "default" : "outline"}
+              role="tab"
+              aria-selected={inputMode === "prompt"}
+              disabled={isRunning}
+              onClick={() => changeInputMode("prompt")}
+            >
+              Prompt
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={inputMode === "ralphLoop" ? "default" : "outline"}
+              role="tab"
+              aria-selected={inputMode === "ralphLoop"}
+              disabled={isRunning}
+              onClick={() => changeInputMode("ralphLoop")}
+            >
+              Ralph loop
+            </Button>
           </div>
-          <SavedPromptToolbar
-            disabled={!selectedAgentId}
-            onSendPrompt={(savedPrompt) => void sendSavedPrompt(savedPrompt)}
-          />
+          {inputMode === "ralphLoop" && (
+            <div
+              className="flex shrink-0 flex-col gap-2 border-b px-2 py-2"
+              role="tabpanel"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  반복 횟수
+                  <Input
+                    type="number"
+                    min={1}
+                    max={RALPH_MAX_ITERATIONS}
+                    value={ralphMaxIterations}
+                    disabled={isRunning}
+                    className="h-8 w-20"
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (Number.isFinite(next)) {
+                        setRalphMaxIterations(
+                          Math.min(RALPH_MAX_ITERATIONS, Math.max(1, Math.round(next))),
+                        );
+                      }
+                    }}
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  반복 간 지연(초)
+                  <Input
+                    type="number"
+                    min={0}
+                    value={ralphDelaySeconds}
+                    disabled={isRunning}
+                    className="h-8 w-20"
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (Number.isFinite(next)) {
+                        setRalphDelaySeconds(Math.max(0, next));
+                      }
+                    }}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={ralphStopOnError ? "default" : "outline"}
+                  disabled={isRunning}
+                  onClick={() => setRalphStopOnError((value) => !value)}
+                >
+                  오류 시 중단: {ralphStopOnError ? "On" : "Off"}
+                </Button>
+              </div>
+              <Textarea
+                value={ralphPromptTemplate}
+                disabled={isRunning}
+                placeholder="반복마다 agent에게 보낼 loop prompt"
+                className="min-h-16 text-sm"
+                onChange={(event) => setRalphPromptTemplate(event.target.value)}
+              />
+            </div>
+          )}
+          {inputMode === "prompt" && (
+            <SavedPromptToolbar
+              disabled={!selectedAgentId}
+              onSendPrompt={(savedPrompt) => void sendSavedPrompt(savedPrompt)}
+            />
+          )}
           <div className="min-h-0 flex-1">
             <PromptInputTextarea
               disableAutosize
-              placeholder="선택한 worktree에서 실행할 작업을 입력하세요."
+              placeholder={
+                inputMode === "ralphLoop"
+                  ? "Ralph loop로 반복 실행할 초기 작업을 입력하세요."
+                  : "선택한 worktree에서 실행할 작업을 입력하세요."
+              }
               className="h-full min-h-0 resize-none overflow-auto"
             />
           </div>
-          {queuedPrompts.length > 0 && (
+          {inputMode === "prompt" && queuedPrompts.length > 0 && (
             <div className="flex max-h-36 shrink-0 flex-col gap-2 px-2 pb-2">
               <div className="text-xs text-muted-foreground">대기 중인 prompt {queuedPrompts.length}개</div>
               <div className="flex min-h-0 flex-col gap-2 overflow-auto pr-1">
@@ -1415,14 +1449,40 @@ export function AgentRunPanel({
           )}
           <div className="flex shrink-0 flex-col gap-3 px-2 pb-1 sm:flex-row sm:items-center sm:justify-between">
             <span className="min-w-0 text-xs text-muted-foreground">
-              {isRunning
-                ? isAwaitingPromptResponse
-                  ? "Enter는 queue에 추가합니다. Steer는 현재 실행을 중단하고 새 지시로 재실행합니다."
-                  : "Enter는 queue에 추가합니다. Steer는 queue와 별도로 현재 실행을 재지시합니다."
-                : "Enter로 실행, Shift+Enter로 줄바꿈"}
+              {inputMode === "ralphLoop"
+                ? isRunning
+                  ? "Ralph loop 실행 중에는 입력 모드 전환과 설정 변경이 잠깁니다."
+                  : "Enter로 Ralph loop 실행, Shift+Enter로 줄바꿈"
+                : isRunning
+                  ? isAwaitingPromptResponse
+                    ? "Enter는 queue에 추가합니다. Steer는 현재 실행을 중단하고 새 지시로 재실행합니다."
+                    : "Enter는 queue에 추가합니다. Steer는 queue와 별도로 현재 실행을 재지시합니다."
+                  : "Enter로 실행, Shift+Enter로 줄바꿈"}
             </span>
             <PromptInputActions className="justify-end">
-              {isRunning ? (
+              {inputMode === "ralphLoop" ? (
+                isRunning ? (
+                  <PromptInputAction tooltip="Cancel loop">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={!canCancel}
+                      onClick={() => void cancel()}
+                    >
+                      <SquareIcon data-icon="inline-start" />
+                      Cancel loop
+                    </Button>
+                  </PromptInputAction>
+                ) : (
+                  <PromptInputAction tooltip="Start Ralph loop">
+                    <Button type="button" size="sm" disabled={!canStartRun} onClick={() => void run()}>
+                      <PlayIcon data-icon="inline-start" />
+                      Run loop
+                    </Button>
+                  </PromptInputAction>
+                )
+              ) : isRunning ? (
                 <>
                   <PromptInputAction tooltip="Queue prompt">
                     <Button
