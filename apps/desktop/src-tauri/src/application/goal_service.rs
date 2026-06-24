@@ -71,6 +71,33 @@ pub fn update_goal(
     Ok(updated_goal)
 }
 
+/// agent run에서 관측한 token/시간 사용량을 해당 worktree의 goal에 누적한다.
+/// goal이 없으면 변경 없이 `Ok(None)`을 반환한다(goal 없는 run은 기존 동작 유지).
+pub fn record_goal_usage(
+    repository: &impl GoalRepository,
+    working_directory: String,
+    tokens_used_delta: usize,
+    time_used_seconds_delta: u64,
+) -> Result<Option<ThreadGoal>, String> {
+    let working_directory = normalize_required(working_directory, "Working directory")?;
+    let mut goals = repository.load_goals()?;
+
+    let Some(goal) = goals
+        .iter_mut()
+        .find(|goal| goal.working_directory == working_directory)
+    else {
+        return Ok(None);
+    };
+
+    goal.apply_run_usage(tokens_used_delta, time_used_seconds_delta);
+    goal.updated_at = now_timestamp();
+
+    let updated_goal = goal.clone();
+    repository.save_goals(&goals)?;
+
+    Ok(Some(updated_goal))
+}
+
 pub fn clear_goal(
     repository: &impl GoalRepository,
     working_directory: String,
@@ -214,6 +241,49 @@ mod tests {
         assert_eq!(goal.objective, "revised");
         assert_eq!(goal.status, GoalStatus::Paused);
         assert_eq!(goal.token_budget, None);
+    }
+
+    #[test]
+    fn record_goal_usage_accumulates_tokens_and_time() {
+        let repository = MemoryGoalRepository::default();
+        create_goal(&repository, draft("first")).expect("goal should be created");
+
+        let first = record_goal_usage(&repository, "/repo/worktree".into(), 30, 12)
+            .expect("usage should record")
+            .expect("goal should exist");
+        assert_eq!(first.tokens_used, 30);
+        assert_eq!(first.time_used_seconds, 12);
+        assert_eq!(first.status, GoalStatus::Active);
+
+        let second = record_goal_usage(&repository, "/repo/worktree".into(), 40, 8)
+            .expect("usage should record")
+            .expect("goal should exist");
+        assert_eq!(second.tokens_used, 70);
+        assert_eq!(second.time_used_seconds, 20);
+    }
+
+    #[test]
+    fn record_goal_usage_transitions_to_budget_limited_when_budget_reached() {
+        let repository = MemoryGoalRepository::default();
+        // draft sets token_budget to Some(100).
+        create_goal(&repository, draft("first")).expect("goal should be created");
+
+        let goal = record_goal_usage(&repository, "/repo/worktree".into(), 100, 5)
+            .expect("usage should record")
+            .expect("goal should exist");
+
+        assert_eq!(goal.tokens_used, 100);
+        assert_eq!(goal.status, GoalStatus::BudgetLimited);
+    }
+
+    #[test]
+    fn record_goal_usage_is_noop_without_goal() {
+        let repository = MemoryGoalRepository::default();
+
+        let result = record_goal_usage(&repository, "/repo/worktree".into(), 10, 1)
+            .expect("usage recording should succeed");
+
+        assert!(result.is_none());
     }
 
     #[test]
