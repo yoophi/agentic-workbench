@@ -51,6 +51,7 @@ import {
 } from "@/features/agent-run/model/run-panel-state";
 import type { QueuedPrompt, UsageContext } from "@/features/agent-run/model/run-panel-state";
 import { formatSessionLabel } from "@/features/agent-run/model/session-label";
+import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -403,14 +404,30 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
     }
   }
 
-  function enqueuePrompt() {
-    const nextPrompt = prompt.trim();
+  function enqueuePrompt(promptText = prompt) {
+    const nextPrompt = promptText.trim();
     if (!nextPrompt) {
       return;
     }
 
     setQueuedPrompts((current) => [...current, { id: crypto.randomUUID(), text: nextPrompt }]);
-    setPrompt(defaultPrompt);
+    if (promptText === prompt) {
+      setPrompt(defaultPrompt);
+    }
+  }
+
+  async function sendSavedPrompt(savedPrompt: string) {
+    const nextPrompt = savedPrompt.trim();
+    if (!nextPrompt) {
+      return;
+    }
+
+    if (isRunning) {
+      enqueuePrompt(nextPrompt);
+      return;
+    }
+
+    await startRun(nextPrompt);
   }
 
   function moveQueuedPrompt(fromIndex: number, toIndex: number) {
@@ -817,6 +834,10 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
               {contextSizeOptions.find((option) => option.value === contextSize)?.description}
             </span>
           </div>
+          <SavedPromptToolbar
+            disabled={!selectedAgentId}
+            onSendPrompt={(savedPrompt) => void sendSavedPrompt(savedPrompt)}
+          />
           <div className="min-h-0 flex-1">
             <PromptInputTextarea
               disableAutosize
@@ -910,7 +931,12 @@ export function AgentRunPanel({ workingDirectory, scrollHeader }: AgentRunPanelP
               {isRunning ? (
                 <>
                   <PromptInputAction tooltip="Queue prompt">
-                    <Button type="button" size="sm" disabled={!canQueuePrompt} onClick={enqueuePrompt}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!canQueuePrompt}
+                      onClick={() => enqueuePrompt()}
+                    >
                       <PlayIcon data-icon="inline-start" />
                       Queue
                     </Button>
