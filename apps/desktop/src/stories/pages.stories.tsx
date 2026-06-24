@@ -47,10 +47,43 @@ export const EmptyProjectList: Story = {
   ),
 };
 
+export const LoadingProjectList: Story = {
+  render: () => (
+    <ProjectListPage
+      projects={[]}
+      isLoading
+      onRefresh={() => undefined}
+      onCreateProject={() => undefined}
+      onSelectProject={() => undefined}
+      onEditProject={() => undefined}
+      onDeleteProject={() => undefined}
+    />
+  ),
+};
+
 export const ProjectDetail: Story = {
   render: () => (
     <ProjectDetailPage
       project={sampleProjects[0]}
+      onBack={() => undefined}
+      onEditProject={() => undefined}
+      onDeleteProject={() => undefined}
+      onOpenWorktree={() => undefined}
+    />
+  ),
+};
+
+export const ProjectDetailLongPath: Story = {
+  render: () => (
+    <ProjectDetailPage
+      project={{
+        ...sampleProjects[0],
+        id: "project-long-path",
+        workingDirectory:
+          "/Users/yoophi/project/worktrees/acp-minimal-app/feature/storybook-long-path-layout-validation-with-many-segments",
+        description:
+          "긴 작업 디렉토리, remote URL, worktree 목록의 줄바꿈과 말줄임 처리를 검증합니다.",
+      }}
       onBack={() => undefined}
       onEditProject={() => undefined}
       onDeleteProject={() => undefined}
@@ -64,6 +97,16 @@ export const WorktreeSession: Story = {
     <ProjectWorktreeSessionPage
       project={sampleProjects[0]}
       worktree={sampleWorktrees[1]}
+      onBack={() => undefined}
+    />
+  ),
+};
+
+export const WorktreeSessionClean: Story = {
+  render: () => (
+    <ProjectWorktreeSessionPage
+      project={sampleProjects[0]}
+      worktree={sampleWorktrees[0]}
       onBack={() => undefined}
     />
   ),

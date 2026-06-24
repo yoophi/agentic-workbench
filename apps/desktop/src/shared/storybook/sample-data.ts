@@ -1,4 +1,8 @@
-import type { AgentDescriptor, ThreadGoal } from "@/entities/agent-run/model/types";
+import type {
+  AgentDescriptor,
+  ThreadGoal,
+  WorktreeChange,
+} from "@/entities/agent-run/model/types";
 import type { GitBranch } from "@/entities/project/model/git-branch";
 import type { GitRemote } from "@/entities/project/model/git-remote";
 import type { GitWorktree } from "@/entities/project/model/git-worktree";
@@ -97,6 +101,48 @@ export const sampleWorktreeChanges: GitWorktreeChanges = {
     },
   ],
 };
+
+export const sampleAgentRunWorktreeChanges: WorktreeChange[] = [
+  {
+    path: "apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx",
+    oldPath: null,
+    changeType: "modified",
+    binary: false,
+    diff: [
+      "diff --git a/apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx b/apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx",
+      "index 1111111..2222222 100644",
+      "--- a/apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx",
+      "+++ b/apps/desktop/src/features/agent-run/ui/agent-run-panel.tsx",
+      "@@ -42,6 +42,7 @@ export function AgentRunPanel() {",
+      "   const [items, setItems] = useState<TimelineItem[]>([]);",
+      "+  const [changedFilesOpen, setChangedFilesOpen] = useState(true);",
+    ].join("\n"),
+    content: null,
+    truncated: false,
+  },
+  {
+    path: "apps/desktop/src/features/worktree-changes/ui/worktree-changes-panel.tsx",
+    oldPath: null,
+    changeType: "added",
+    binary: false,
+    diff: null,
+    content: [
+      "export function WorktreeChangesPanel() {",
+      "  return <section>Changed files with diff preview</section>;",
+      "}",
+    ].join("\n"),
+    truncated: false,
+  },
+  {
+    path: "assets/screenshot.png",
+    oldPath: null,
+    changeType: "untracked",
+    binary: true,
+    diff: null,
+    content: null,
+    truncated: false,
+  },
+];
 
 export const sampleGoal: ThreadGoal = {
   workingDirectory: "/Users/yoophi/project/acp-minimal-app",

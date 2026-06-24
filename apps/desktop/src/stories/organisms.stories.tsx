@@ -9,7 +9,8 @@ import { ProjectTable } from "@/features/project-list/ui/project-table";
 import { GitReferenceCombobox } from "@/features/project-worktree/ui/git-reference-combobox";
 import { ProjectWorktreeCard } from "@/features/project-worktree/ui/project-worktree-card";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
-import { WorktreeChangesPanel } from "@/features/worktree-change-review/ui/worktree-changes-panel";
+import { WorktreeChangesPanel as WorktreeChangeReviewPanel } from "@/features/worktree-change-review/ui/worktree-changes-panel";
+import { WorktreeChangesPanel as AgentRunWorktreeChangesPanel } from "@/features/worktree-changes/ui/worktree-changes-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { sampleProjects } from "@/shared/storybook/sample-data";
@@ -99,7 +100,26 @@ export const WorktreeManagement: Story = {
 
 export const WorktreeChangeReview: Story = {
   render: () => (
-    <WorktreeChangesPanel workingDirectory="/Users/yoophi/project/worktrees/acp-minimal-app/storybook" />
+    <WorktreeChangeReviewPanel workingDirectory="/Users/yoophi/project/worktrees/acp-minimal-app/storybook" />
+  ),
+};
+
+export const AgentRunChangedFiles: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Shows the agent-run changed-files panel with modified, added, and binary file states. Storybook Tauri mocks supply list_worktree_changes.",
+      },
+    },
+  },
+  render: () => (
+    <div className="max-w-5xl">
+      <AgentRunWorktreeChangesPanel
+        workingDirectory="/Users/yoophi/project/worktrees/acp-minimal-app/storybook"
+        isRunning={false}
+      />
+    </div>
   ),
 };
 

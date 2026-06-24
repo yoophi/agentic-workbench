@@ -1,5 +1,6 @@
 import {
   sampleAgents,
+  sampleAgentRunWorktreeChanges,
   sampleBranches,
   sampleGoal,
   sampleProjects,
@@ -131,6 +132,8 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       return sampleBranches as T;
     case "list_git_worktrees":
       return sampleWorktrees as T;
+    case "list_worktree_changes":
+      return sampleAgentRunWorktreeChanges as T;
     case "get_worktree_changes":
       return {
         ...sampleWorktreeChanges,
