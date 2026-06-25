@@ -26,12 +26,19 @@ function saveLayout(layout: Layout) {
 export function RepositoryPage() {
   const [selectedRepository, setSelectedRepository] = useState<Repository>();
 
+  function handleDeleteRepository(repository: Repository) {
+    if (repository.id === selectedRepository?.id) {
+      setSelectedRepository(undefined);
+    }
+  }
+
   return (
     <main className="h-svh bg-background text-foreground">
       <ResizablePanelGroup defaultLayout={loadLayout()} onLayoutChanged={saveLayout}>
         <ResizablePanel id="repository-sidebar" defaultSize="300px" minSize="260px" maxSize="42%">
           <RepositorySidebar
             selectedRepositoryId={selectedRepository?.id}
+            onDeleteRepository={handleDeleteRepository}
             onSelectRepository={setSelectedRepository}
           />
         </ResizablePanel>

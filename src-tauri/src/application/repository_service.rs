@@ -49,6 +49,54 @@ where
 
         Ok(repository)
     }
+
+    pub fn rename_repository(
+        &self,
+        repository_id: String,
+        name: String,
+    ) -> Result<Repository, String> {
+        let requested_id = repository_id.trim();
+        let requested_name = name.trim();
+
+        if requested_id.is_empty() {
+            return Err("Repository id is required.".to_string());
+        }
+
+        if requested_name.is_empty() {
+            return Err("Repository name is required.".to_string());
+        }
+
+        let mut repositories = self.store.list()?;
+        let repository = repositories
+            .iter_mut()
+            .find(|repository| repository.id == requested_id)
+            .ok_or_else(|| "Repository is not registered.".to_string())?;
+
+        repository.name = requested_name.to_string();
+        let renamed_repository = repository.clone();
+        self.store.save_all(&repositories)?;
+
+        Ok(renamed_repository)
+    }
+
+    pub fn delete_repository(&self, repository_id: String) -> Result<(), String> {
+        let requested_id = repository_id.trim();
+
+        if requested_id.is_empty() {
+            return Err("Repository id is required.".to_string());
+        }
+
+        let mut repositories = self.store.list()?;
+        let original_len = repositories.len();
+
+        repositories.retain(|repository| repository.id != requested_id);
+
+        if repositories.len() == original_len {
+            return Err("Repository is not registered.".to_string());
+        }
+
+        self.store.save_all(&repositories)
+    }
 }
 
 fn repository_name_from_root(git_root: &str) -> String {
@@ -143,6 +191,70 @@ mod tests {
         let result = service.create_repository("/tmp/repo".to_string());
 
         assert_eq!(result.unwrap_err(), "Repository is already registered.");
+    }
+
+    #[test]
+    fn renames_registered_repository() {
+        let store = MemoryStore::default();
+        let service = RepositoryService::new(
+            store,
+            StaticValidator {
+                root: "/tmp/repo".to_string(),
+            },
+        );
+        service
+            .create_repository("/tmp/repo".to_string())
+            .expect("repository should be saved");
+
+        let repository = service
+            .rename_repository("/tmp/repo".to_string(), "New name".to_string())
+            .expect("repository should be renamed");
+
+        assert_eq!(repository.name, "New name");
+        assert_eq!(
+            service
+                .list_repositories()
+                .expect("repositories should load")[0]
+                .name,
+            "New name"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_repository_name() {
+        let service = RepositoryService::new(
+            MemoryStore::default(),
+            StaticValidator {
+                root: "/tmp/repo".to_string(),
+            },
+        );
+
+        let result = service.rename_repository("/tmp/repo".to_string(), "  ".to_string());
+
+        assert_eq!(result.unwrap_err(), "Repository name is required.");
+    }
+
+    #[test]
+    fn deletes_registered_repository() {
+        let store = MemoryStore::default();
+        let service = RepositoryService::new(
+            store,
+            StaticValidator {
+                root: "/tmp/repo".to_string(),
+            },
+        );
+        service
+            .create_repository("/tmp/repo".to_string())
+            .expect("repository should be saved");
+
+        service
+            .delete_repository("/tmp/repo".to_string())
+            .expect("repository should be deleted");
+
+        assert!(service
+            .list_repositories()
+            .expect("repositories should load")
+            .is_empty());
     }
 
     #[test]

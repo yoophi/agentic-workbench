@@ -1,5 +1,6 @@
 export {
   createRepository,
+  deleteRepository,
   getAppInfo,
   getCommitDetail,
   getFileDiff,
@@ -7,6 +8,7 @@ export {
   listHistory,
   listRepositories,
   listWorktrees,
+  renameRepository,
   repositoryKeys,
   startRepositoryWatchers,
   stopRepositoryWatchers,

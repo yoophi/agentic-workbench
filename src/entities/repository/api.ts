@@ -78,6 +78,23 @@ export function createRepository(path: string) {
   });
 }
 
+export function renameRepository(repositoryId: string, name: string) {
+  return invoke<Repository>("rename_repository", {
+    request: {
+      repositoryId,
+      name,
+    },
+  });
+}
+
+export function deleteRepository(repositoryId: string) {
+  return invoke<void>("delete_repository", {
+    request: {
+      repositoryId,
+    },
+  });
+}
+
 export function listWorktrees(repositoryId: string) {
   return invoke<GitWorktree[]>("list_worktrees", {
     request: {

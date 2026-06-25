@@ -49,6 +49,13 @@ pub struct CreateRepositoryRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenameRepositoryRequest {
+    repository_id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryRequest {
     repository_id: String,
 }
@@ -87,6 +94,19 @@ pub fn create_repository(
     request: CreateRepositoryRequest,
 ) -> Result<Repository, String> {
     repository_service(app)?.create_repository(request.path)
+}
+
+#[tauri::command]
+pub fn rename_repository(
+    app: AppHandle,
+    request: RenameRepositoryRequest,
+) -> Result<Repository, String> {
+    repository_service(app)?.rename_repository(request.repository_id, request.name)
+}
+
+#[tauri::command]
+pub fn delete_repository(app: AppHandle, request: RepositoryRequest) -> Result<(), String> {
+    repository_service(app)?.delete_repository(request.repository_id)
 }
 
 #[tauri::command]
