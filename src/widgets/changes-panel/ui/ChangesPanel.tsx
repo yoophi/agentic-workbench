@@ -5,6 +5,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  EyeOff,
+  Filter,
   Folder,
   FolderGit2,
   FolderOpen,
@@ -58,6 +60,7 @@ type ChangesPanelProps = {
 
 type HistoryView = "list" | "graph";
 type FileChangeView = "tree" | "list";
+type BranchGraphRefKind = "localBranch" | "remoteBranch";
 
 const CHANGES_LAYOUT_STORAGE_KEY = "repository-detail-columns-layout";
 
@@ -212,6 +215,86 @@ function refsByTarget(refs: GitGraphRef[]) {
   }
 
   return result;
+}
+
+function branchGraphRefKind(branch: GitBranch): BranchGraphRefKind {
+  return branch.isRemote ? "remoteBranch" : "localBranch";
+}
+
+function branchGraphRefKey(branch: GitBranch) {
+  return `${branchGraphRefKind(branch)}:${branch.name}`;
+}
+
+function graphRefKey(ref: GitGraphRef) {
+  return `${ref.kind}:${ref.name}`;
+}
+
+function getReachableCommitHashes(commits: GitGraphCommit[], targetHashes: ReadonlySet<string>) {
+  const commitByHash = new Map(commits.map((commit) => [commit.hash, commit]));
+  const reachable = new Set<string>();
+  const stack = [...targetHashes];
+
+  while (stack.length > 0) {
+    const hash = stack.pop();
+
+    if (!hash || reachable.has(hash)) {
+      continue;
+    }
+
+    const commit = commitByHash.get(hash);
+
+    if (!commit) {
+      continue;
+    }
+
+    reachable.add(hash);
+    stack.push(...commit.parents);
+  }
+
+  return reachable;
+}
+
+function filterGraphByBranchControls(
+  graph: GitCommitGraph,
+  filteredBranchKeys: ReadonlySet<string>,
+  hiddenBranchKeys: ReadonlySet<string>,
+): GitCommitGraph {
+  const hasBranchFilters = filteredBranchKeys.size > 0;
+  const visibleRefs = graph.refs.filter((ref) => {
+    if (ref.kind === "tag") {
+      return !hasBranchFilters;
+    }
+
+    const key = graphRefKey(ref);
+
+    if (hasBranchFilters) {
+      return filteredBranchKeys.has(key);
+    }
+
+    return !hiddenBranchKeys.has(key);
+  });
+
+  if (!hasBranchFilters) {
+    return {
+      ...graph,
+      refs: visibleRefs,
+    };
+  }
+
+  const targetHashes = new Set(visibleRefs.map((ref) => ref.target));
+  const reachableCommitHashes = getReachableCommitHashes(graph.commits, targetHashes);
+  const visibleCommits = graph.commits.filter((commit) => reachableCommitHashes.has(commit.hash));
+
+  return {
+    ...graph,
+    commits: visibleCommits,
+    refs: visibleRefs,
+    page: {
+      ...graph.page,
+      totalCount: visibleCommits.length,
+      hasMore: false,
+    },
+  };
 }
 
 function diffLineClassName(line: string) {
@@ -671,6 +754,8 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const [fileChangeView, setFileChangeView] = useState<FileChangeView>("tree");
   const [expandedBranchFolders, setExpandedBranchFolders] = useState<Set<string>>(new Set());
   const [expandedFileFolders, setExpandedFileFolders] = useState<Set<string>>(new Set());
+  const [filteredBranchKeys, setFilteredBranchKeys] = useState<Set<string>>(new Set());
+  const [hiddenBranchKeys, setHiddenBranchKeys] = useState<Set<string>>(new Set());
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
@@ -722,7 +807,9 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   });
   const branchRows = buildBranchTreeRows(branchesQuery.data ?? [], expandedBranchFolders);
   const fileRows = buildFileTreeRows(commitDetailQuery.data?.files ?? [], expandedFileFolders);
-  const graphData = graphQuery.data;
+  const graphData = graphQuery.data
+    ? filterGraphByBranchControls(graphQuery.data, filteredBranchKeys, hiddenBranchKeys)
+    : undefined;
   const graphRows = graphData ? computeGitGraphRows(graphData.commits) : new Map<string, GitGraphRow>();
   const maxGraphLane = getMaxGraphLane(graphRows);
   const graphRefs = graphData ? refsByTarget(graphData.refs) : new Map<string, GitGraphRef[]>();
@@ -737,6 +824,8 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   useEffect(() => {
     setSelectedCommitHash(undefined);
     setSelectedFilePath(undefined);
+    setFilteredBranchKeys(new Set());
+    setHiddenBranchKeys(new Set());
   }, [selectedRepository?.id]);
 
   useEffect(() => {
@@ -759,6 +848,38 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
         next.delete(path);
       } else {
         next.add(path);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleBranchFilter(branch: GitBranch) {
+    const key = branchGraphRefKey(branch);
+
+    setFilteredBranchKeys((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleBranchHidden(branch: GitBranch) {
+    const key = branchGraphRefKey(branch);
+
+    setHiddenBranchKeys((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
       }
 
       return next;
@@ -927,23 +1048,63 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
                         <span className="min-w-0 truncate text-muted-foreground">{row.name}</span>
                       </button>
                     ) : (
-                      <div
-                        className="flex h-8 items-center gap-2 border-b px-2 last:border-b-0"
-                        key={row.id}
-                        style={{ paddingLeft: `${28 + row.depth * 18}px` }}
-                        title={row.branch.fullName}
-                      >
-                        <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate">{row.name}</span>
-                        <span className="shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                          {row.branch.isRemote ? "remote" : "local"}
-                        </span>
-                        {row.branch.isCurrent ? (
-                          <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] leading-none">
-                            current
-                          </span>
-                        ) : null}
-                      </div>
+                      (() => {
+                        const branchKey = branchGraphRefKey(row.branch);
+                        const isFiltered = filteredBranchKeys.has(branchKey);
+                        const isHidden = hiddenBranchKeys.has(branchKey);
+
+                        return (
+                          <div
+                            className="group/branch flex h-8 items-center gap-2 border-b px-2 last:border-b-0"
+                            key={row.id}
+                            style={{ paddingLeft: `${28 + row.depth * 18}px` }}
+                            title={row.branch.fullName}
+                          >
+                            <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                            <span className="shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                              {row.branch.isRemote ? "remote" : "local"}
+                            </span>
+                            {row.branch.isCurrent ? (
+                              <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] leading-none">
+                                current
+                              </span>
+                            ) : null}
+                            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                              <Button
+                                aria-label={`Filter graph to ${row.branch.name}`}
+                                aria-pressed={isFiltered}
+                                className={
+                                  isFiltered
+                                    ? "text-blue-600 opacity-100 dark:text-blue-300"
+                                    : "opacity-0 group-hover/branch:opacity-100 group-focus-within/branch:opacity-100"
+                                }
+                                size="icon-sm"
+                                type="button"
+                                variant={isFiltered ? "secondary" : "ghost"}
+                                onClick={() => toggleBranchFilter(row.branch)}
+                              >
+                                <Filter />
+                              </Button>
+                              <Button
+                                aria-label={`${isHidden ? "Show" : "Hide"} ${row.branch.name} in graph`}
+                                aria-pressed={isHidden}
+                                className={
+                                  isHidden
+                                    ? "text-blue-600 opacity-100 dark:text-blue-300"
+                                    : "opacity-0 group-hover/branch:opacity-100 group-focus-within/branch:opacity-100"
+                                }
+                                size="icon-sm"
+                                type="button"
+                                variant={isHidden ? "secondary" : "ghost"}
+                                onClick={() => toggleBranchHidden(row.branch)}
+                              >
+                                <EyeOff />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })()
                     ),
                   )}
                 </div>

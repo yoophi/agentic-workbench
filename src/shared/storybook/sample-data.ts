@@ -153,6 +153,21 @@ export const sampleCommitGraph: GitCommitGraph = {
       kind: "remoteBranch",
     },
     {
+      name: "feat/git-graph",
+      target: sampleHistory[1].hash,
+      kind: "localBranch",
+    },
+    {
+      name: "feat/repository-actions",
+      target: sampleHistory[2].hash,
+      kind: "localBranch",
+    },
+    {
+      name: "origin/feat/git-graph",
+      target: sampleHistory[1].hash,
+      kind: "remoteBranch",
+    },
+    {
       name: "v0.1.0",
       target: sampleHistory[2].hash,
       kind: "tag",
