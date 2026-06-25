@@ -19,6 +19,7 @@ import {
 import {
   getAppInfo,
   listBranches,
+  listHistory,
   listWorktrees,
   repositoryKeys,
   type GitBranch,
@@ -47,6 +48,10 @@ type BranchTreeRow =
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function getShortHash(hash: string) {
+  return hash.slice(0, 8);
 }
 
 function getWorktreeKind(worktree: GitWorktree) {
@@ -114,8 +119,16 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "branches"],
     queryFn: () => listBranches(selectedRepository?.id ?? ""),
   });
+  const historyQuery = useQuery({
+    enabled: Boolean(selectedRepository),
+    queryKey: selectedRepository
+      ? repositoryKeys.history(selectedRepository.id)
+      : ["repositories", "unselected", "history"],
+    queryFn: () => listHistory(selectedRepository?.id ?? ""),
+  });
   const branchRows = buildBranchTreeRows(branchesQuery.data ?? []);
-  const isRefreshing = worktreesQuery.isFetching || branchesQuery.isFetching;
+  const isRefreshing =
+    worktreesQuery.isFetching || branchesQuery.isFetching || historyQuery.isFetching;
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -142,6 +155,7 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
           onClick={() => {
             void worktreesQuery.refetch();
             void branchesQuery.refetch();
+            void historyQuery.refetch();
           }}
         >
           {isRefreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -254,6 +268,52 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
                         </TableCell>
                         <TableCell className="max-w-0 truncate font-mono text-xs text-muted-foreground">
                           {row.type === "branch" ? (row.branch.worktreePath ?? "") : ""}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <GitCommit className="size-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">History</h3>
+              </div>
+              {historyQuery.isLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading history
+                </p>
+              ) : historyQuery.isError ? (
+                <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>{getErrorMessage(historyQuery.error)}</span>
+                </p>
+              ) : historyQuery.data?.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No commits found.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-28">Hash</TableHead>
+                      <TableHead>Message</TableHead>
+                      <TableHead className="w-48">Author</TableHead>
+                      <TableHead className="w-52">Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historyQuery.data?.map((commit) => (
+                      <TableRow key={commit.hash}>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {getShortHash(commit.hash)}
+                        </TableCell>
+                        <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
+                        <TableCell className="max-w-0 truncate text-muted-foreground">
+                          {commit.author}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {commit.date}
                         </TableCell>
                       </TableRow>
                     ))}

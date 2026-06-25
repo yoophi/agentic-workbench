@@ -1,4 +1,6 @@
-use crate::domain::{branch::GitBranch, repository::Repository, worktree::GitWorktree};
+use crate::domain::{
+    branch::GitBranch, commit::GitCommitSummary, repository::Repository, worktree::GitWorktree,
+};
 
 pub trait GitRepositoryValidator {
     fn validate_repository(&self, path: &str) -> Result<String, String>;
@@ -15,4 +17,8 @@ pub trait GitWorktreeReader {
 
 pub trait GitBranchReader {
     fn list_branches(&self, repository_path: &str) -> Result<Vec<GitBranch>, String>;
+}
+
+pub trait GitHistoryReader {
+    fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String>;
 }

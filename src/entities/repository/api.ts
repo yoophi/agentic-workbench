@@ -27,10 +27,18 @@ export type GitBranch = {
   worktreePath?: string | null;
 };
 
+export type GitCommitSummary = {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+};
+
 export const repositoryKeys = {
   all: ["repositories"] as const,
   worktrees: (repositoryId: string) => ["repositories", repositoryId, "worktrees"] as const,
   branches: (repositoryId: string) => ["repositories", repositoryId, "branches"] as const,
+  history: (repositoryId: string) => ["repositories", repositoryId, "history"] as const,
 };
 
 export function getAppInfo() {
@@ -59,6 +67,14 @@ export function listWorktrees(repositoryId: string) {
 
 export function listBranches(repositoryId: string) {
   return invoke<GitBranch[]>("list_branches", {
+    request: {
+      repositoryId,
+    },
+  });
+}
+
+export function listHistory(repositoryId: string) {
+  return invoke<GitCommitSummary[]>("list_history", {
     request: {
       repositoryId,
     },
