@@ -1,9 +1,11 @@
+import { useState } from "react";
 import type { Layout } from "react-resizable-panels";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@yoophi/ui/components/resizable";
+import type { Repository } from "@/entities/repository";
 import { ChangesPanel } from "@/widgets/changes-panel";
 import { RepositorySidebar } from "@/widgets/repository-sidebar";
 
@@ -22,15 +24,20 @@ function saveLayout(layout: Layout) {
 }
 
 export function RepositoryPage() {
+  const [selectedRepository, setSelectedRepository] = useState<Repository>();
+
   return (
     <main className="h-svh bg-background text-foreground">
       <ResizablePanelGroup defaultLayout={loadLayout()} onLayoutChanged={saveLayout}>
-        <ResizablePanel id="repository-sidebar" defaultSize="260px" minSize="220px" maxSize="42%">
-          <RepositorySidebar />
+        <ResizablePanel id="repository-sidebar" defaultSize="300px" minSize="260px" maxSize="42%">
+          <RepositorySidebar
+            selectedRepositoryId={selectedRepository?.id}
+            onSelectRepository={setSelectedRepository}
+          />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="changes">
-          <ChangesPanel />
+          <ChangesPanel selectedRepository={selectedRepository} />
         </ResizablePanel>
       </ResizablePanelGroup>
     </main>
