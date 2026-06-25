@@ -34,11 +34,22 @@ export type GitCommitSummary = {
   date: string;
 };
 
+export type GitCommitFileChange = {
+  path: string;
+  status: string;
+};
+
+export type GitCommitDetail = GitCommitSummary & {
+  files: GitCommitFileChange[];
+};
+
 export const repositoryKeys = {
   all: ["repositories"] as const,
   worktrees: (repositoryId: string) => ["repositories", repositoryId, "worktrees"] as const,
   branches: (repositoryId: string) => ["repositories", repositoryId, "branches"] as const,
   history: (repositoryId: string) => ["repositories", repositoryId, "history"] as const,
+  commitDetail: (repositoryId: string, commitHash: string) =>
+    ["repositories", repositoryId, "commits", commitHash] as const,
 };
 
 export function getAppInfo() {
@@ -77,6 +88,15 @@ export function listHistory(repositoryId: string) {
   return invoke<GitCommitSummary[]>("list_history", {
     request: {
       repositoryId,
+    },
+  });
+}
+
+export function getCommitDetail(repositoryId: string, commitHash: string) {
+  return invoke<GitCommitDetail>("get_commit_detail", {
+    request: {
+      repositoryId,
+      commitHash,
     },
   });
 }

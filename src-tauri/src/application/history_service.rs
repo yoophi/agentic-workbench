@@ -1,6 +1,6 @@
 use crate::{
     application::ports::{GitHistoryReader, RepositoryStore},
-    domain::commit::GitCommitSummary,
+    domain::commit::{GitCommitDetail, GitCommitSummary},
 };
 
 pub struct HistoryService<S, R>
@@ -22,20 +22,41 @@ where
     }
 
     pub fn list_history(&self, repository_id: String) -> Result<Vec<GitCommitSummary>, String> {
+        let repository_path = self.registered_repository_path(repository_id)?;
+
+        self.reader.list_history(&repository_path)
+    }
+
+    pub fn get_commit_detail(
+        &self,
+        repository_id: String,
+        commit_hash: String,
+    ) -> Result<GitCommitDetail, String> {
+        let requested_hash = commit_hash.trim();
+
+        if requested_hash.is_empty() {
+            return Err("Commit hash is required.".to_string());
+        }
+
+        let repository_path = self.registered_repository_path(repository_id)?;
+
+        self.reader
+            .get_commit_detail(&repository_path, requested_hash)
+    }
+
+    fn registered_repository_path(&self, repository_id: String) -> Result<String, String> {
         let requested_id = repository_id.trim();
 
         if requested_id.is_empty() {
             return Err("Repository id is required.".to_string());
         }
 
-        let repository = self
-            .store
+        self.store
             .list()?
             .into_iter()
             .find(|repository| repository.id == requested_id)
-            .ok_or_else(|| "Repository is not registered.".to_string())?;
-
-        self.reader.list_history(&repository.path)
+            .map(|repository| repository.path)
+            .ok_or_else(|| "Repository is not registered.".to_string())
     }
 }
 
@@ -45,7 +66,10 @@ mod tests {
 
     use crate::{
         application::ports::{GitHistoryReader, RepositoryStore},
-        domain::{commit::GitCommitSummary, repository::Repository},
+        domain::{
+            commit::{GitCommitDetail, GitCommitFileChange, GitCommitSummary},
+            repository::Repository,
+        },
     };
 
     use super::*;
@@ -73,6 +97,23 @@ mod tests {
     impl GitHistoryReader for StaticHistoryReader {
         fn list_history(&self, _repository_path: &str) -> Result<Vec<GitCommitSummary>, String> {
             Ok(self.commits.clone())
+        }
+
+        fn get_commit_detail(
+            &self,
+            _repository_path: &str,
+            commit_hash: &str,
+        ) -> Result<GitCommitDetail, String> {
+            Ok(GitCommitDetail::new(
+                commit_hash.to_string(),
+                "Initial commit".to_string(),
+                "A Developer".to_string(),
+                "2026-06-25T00:00:00+09:00".to_string(),
+                vec![GitCommitFileChange::new(
+                    "README.md".to_string(),
+                    "A".to_string(),
+                )],
+            ))
         }
     }
 
@@ -119,5 +160,52 @@ mod tests {
                 .expect("history should be returned"),
             commits
         );
+    }
+
+    #[test]
+    fn rejects_empty_commit_hash() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let service = HistoryService::new(
+            store,
+            StaticHistoryReader {
+                commits: Vec::new(),
+            },
+        );
+
+        let result = service.get_commit_detail("/tmp/repo".to_string(), "  ".to_string());
+
+        assert_eq!(result.unwrap_err(), "Commit hash is required.");
+    }
+
+    #[test]
+    fn returns_commit_detail_for_registered_repository() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let service = HistoryService::new(
+            store,
+            StaticHistoryReader {
+                commits: Vec::new(),
+            },
+        );
+
+        let detail = service
+            .get_commit_detail("/tmp/repo".to_string(), "abc123".to_string())
+            .expect("commit detail should be returned");
+
+        assert_eq!(detail.hash, "abc123");
+        assert_eq!(detail.files.len(), 1);
     }
 }

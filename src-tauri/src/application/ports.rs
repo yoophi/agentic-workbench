@@ -1,5 +1,8 @@
 use crate::domain::{
-    branch::GitBranch, commit::GitCommitSummary, repository::Repository, worktree::GitWorktree,
+    branch::GitBranch,
+    commit::{GitCommitDetail, GitCommitSummary},
+    repository::Repository,
+    worktree::GitWorktree,
 };
 
 pub trait GitRepositoryValidator {
@@ -21,4 +24,9 @@ pub trait GitBranchReader {
 
 pub trait GitHistoryReader {
     fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String>;
+    fn get_commit_detail(
+        &self,
+        repository_path: &str,
+        commit_hash: &str,
+    ) -> Result<GitCommitDetail, String>;
 }

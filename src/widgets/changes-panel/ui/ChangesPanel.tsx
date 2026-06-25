@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -18,6 +19,7 @@ import {
 } from "@yoophi/ui/components/table";
 import {
   getAppInfo,
+  getCommitDetail,
   listBranches,
   listHistory,
   listWorktrees,
@@ -101,6 +103,7 @@ function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
 }
 
 export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string>();
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
@@ -126,9 +129,24 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "history"],
     queryFn: () => listHistory(selectedRepository?.id ?? ""),
   });
+  const commitDetailQuery = useQuery({
+    enabled: Boolean(selectedRepository && selectedCommitHash),
+    queryKey:
+      selectedRepository && selectedCommitHash
+        ? repositoryKeys.commitDetail(selectedRepository.id, selectedCommitHash)
+        : ["repositories", "unselected", "commits", "unselected"],
+    queryFn: () => getCommitDetail(selectedRepository?.id ?? "", selectedCommitHash ?? ""),
+  });
   const branchRows = buildBranchTreeRows(branchesQuery.data ?? []);
   const isRefreshing =
-    worktreesQuery.isFetching || branchesQuery.isFetching || historyQuery.isFetching;
+    worktreesQuery.isFetching ||
+    branchesQuery.isFetching ||
+    historyQuery.isFetching ||
+    commitDetailQuery.isFetching;
+
+  useEffect(() => {
+    setSelectedCommitHash(undefined);
+  }, [selectedRepository?.id]);
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -156,6 +174,9 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
             void worktreesQuery.refetch();
             void branchesQuery.refetch();
             void historyQuery.refetch();
+            if (selectedCommitHash) {
+              void commitDetailQuery.refetch();
+            }
           }}
         >
           {isRefreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -293,32 +314,98 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               ) : historyQuery.data?.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No commits found.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-28">Hash</TableHead>
-                      <TableHead>Message</TableHead>
-                      <TableHead className="w-48">Author</TableHead>
-                      <TableHead className="w-52">Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historyQuery.data?.map((commit) => (
-                      <TableRow key={commit.hash}>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {getShortHash(commit.hash)}
-                        </TableCell>
-                        <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
-                        <TableCell className="max-w-0 truncate text-muted-foreground">
-                          {commit.author}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {commit.date}
-                        </TableCell>
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-28">Hash</TableHead>
+                        <TableHead>Message</TableHead>
+                        <TableHead className="w-48">Author</TableHead>
+                        <TableHead className="w-52">Date</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {historyQuery.data?.map((commit) => {
+                        const isSelected = commit.hash === selectedCommitHash;
+
+                        return (
+                          <TableRow
+                            className="cursor-pointer data-[selected=true]:bg-muted"
+                            data-selected={isSelected}
+                            key={commit.hash}
+                            onClick={() => setSelectedCommitHash(commit.hash)}
+                          >
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {getShortHash(commit.hash)}
+                            </TableCell>
+                            <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
+                            <TableCell className="max-w-0 truncate text-muted-foreground">
+                              {commit.author}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {commit.date}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  <div className="min-w-0 border-l pl-4">
+                    {!selectedCommitHash ? (
+                      <div className="flex min-h-60 items-center justify-center">
+                        <div className="max-w-xs text-center">
+                          <GitCommit className="mx-auto size-8 text-muted-foreground" />
+                          <h3 className="mt-3 text-sm font-medium">No commit selected</h3>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            Select a commit from the history list to inspect its files.
+                          </p>
+                        </div>
+                      </div>
+                    ) : commitDetailQuery.isLoading ? (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" />
+                        Loading commit detail
+                      </p>
+                    ) : commitDetailQuery.isError ? (
+                      <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+                        <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                        <span>{getErrorMessage(commitDetailQuery.error)}</span>
+                      </p>
+                    ) : commitDetailQuery.data ? (
+                      <div className="grid gap-4">
+                        <div className="grid gap-1">
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {commitDetailQuery.data.hash}
+                          </p>
+                          <h3 className="break-words text-sm font-medium">
+                            {commitDetailQuery.data.message}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {commitDetailQuery.data.author} · {commitDetailQuery.data.date}
+                          </p>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-20">Status</TableHead>
+                              <TableHead>File</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {commitDetailQuery.data.files.map((file) => (
+                              <TableRow key={`${file.status}:${file.path}`}>
+                                <TableCell className="font-mono text-xs">{file.status}</TableCell>
+                                <TableCell className="max-w-0 truncate font-mono text-xs">
+                                  {file.path}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               )}
             </div>
           </div>

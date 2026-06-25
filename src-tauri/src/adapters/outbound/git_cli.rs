@@ -4,7 +4,11 @@ use crate::{
     application::ports::{
         GitBranchReader, GitHistoryReader, GitRepositoryValidator, GitWorktreeReader,
     },
-    domain::{branch::GitBranch, commit::GitCommitSummary, worktree::GitWorktree},
+    domain::{
+        branch::GitBranch,
+        commit::{GitCommitDetail, GitCommitFileChange, GitCommitSummary},
+        worktree::GitWorktree,
+    },
 };
 
 pub struct GitCliRepositoryValidator;
@@ -17,12 +21,10 @@ impl GitRepositoryValidator for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Path is not a Git repository.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Path is not a Git repository.",
+            ));
         }
 
         let git_root = String::from_utf8(output.stdout)
@@ -46,12 +48,10 @@ impl GitWorktreeReader for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Failed to list Git worktrees.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git worktrees.",
+            ));
         }
 
         let stdout = String::from_utf8(output.stdout)
@@ -75,12 +75,10 @@ impl GitBranchReader for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Failed to list Git branches.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git branches.",
+            ));
         }
 
         let stdout = String::from_utf8(output.stdout)
@@ -104,18 +102,69 @@ impl GitHistoryReader for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Failed to list Git history.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git history.",
+            ));
         }
 
         let stdout = String::from_utf8(output.stdout)
             .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
 
         parse_commit_history(&stdout)
+    }
+
+    fn get_commit_detail(
+        &self,
+        repository_path: &str,
+        commit_hash: &str,
+    ) -> Result<GitCommitDetail, String> {
+        let metadata_output = Command::new("git")
+            .args([
+                "-C",
+                repository_path,
+                "show",
+                "-s",
+                "--format=%H%x00%s%x00%an%x00%cI",
+                commit_hash,
+            ])
+            .output()
+            .map_err(|error| format!("Failed to run git: {error}"))?;
+
+        if !metadata_output.status.success() {
+            return Err(git_error_message(
+                &metadata_output.stderr,
+                "Failed to read Git commit detail.",
+            ));
+        }
+
+        let metadata = String::from_utf8(metadata_output.stdout)
+            .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+        let file_output = Command::new("git")
+            .args([
+                "-C",
+                repository_path,
+                "diff-tree",
+                "--root",
+                "--no-commit-id",
+                "--name-status",
+                "-r",
+                commit_hash,
+            ])
+            .output()
+            .map_err(|error| format!("Failed to run git: {error}"))?;
+
+        if !file_output.status.success() {
+            return Err(git_error_message(
+                &file_output.stderr,
+                "Failed to read Git commit files.",
+            ));
+        }
+
+        let files = String::from_utf8(file_output.stdout)
+            .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+
+        parse_commit_detail(&metadata, &files)
     }
 }
 
@@ -177,6 +226,41 @@ fn parse_commit_history(output: &str) -> Result<Vec<GitCommitSummary>, String> {
         .collect()
 }
 
+fn parse_commit_detail(metadata: &str, files: &str) -> Result<GitCommitDetail, String> {
+    let fields = metadata.trim_end().split('\0').collect::<Vec<_>>();
+
+    if fields.len() != 4 {
+        return Err(format!("Git commit detail output is invalid: {metadata}"));
+    }
+
+    Ok(GitCommitDetail::new(
+        fields[0].to_string(),
+        fields[1].to_string(),
+        fields[2].to_string(),
+        fields[3].to_string(),
+        parse_commit_files(files)?,
+    ))
+}
+
+fn parse_commit_files(output: &str) -> Result<Vec<GitCommitFileChange>, String> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let fields = line.splitn(2, '\t').collect::<Vec<_>>();
+
+            if fields.len() != 2 {
+                return Err(format!("Git commit file output is invalid: {line}"));
+            }
+
+            Ok(GitCommitFileChange::new(
+                fields[1].to_string(),
+                fields[0].to_string(),
+            ))
+        })
+        .collect()
+}
+
 fn parse_worktree_porcelain(output: &str) -> Result<Vec<GitWorktree>, String> {
     let mut worktrees = Vec::new();
     let mut path: Option<String> = None;
@@ -224,23 +308,19 @@ fn parse_worktree_porcelain(output: &str) -> Result<Vec<GitWorktree>, String> {
     Ok(worktrees)
 }
 
+fn git_error_message(stderr: &[u8], fallback: &str) -> String {
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+
+    if stderr.is_empty() {
+        fallback.to_string()
+    } else {
+        stderr
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_commit_history() {
-        let output = "\
-abc123\0Initial commit\0A Developer\02026-06-25T00:00:00+09:00\x1e
-def456\0Add feature\0B Developer\02026-06-25T01:00:00+09:00\x1e";
-
-        let commits = parse_commit_history(output).expect("history should parse");
-
-        assert_eq!(commits.len(), 2);
-        assert_eq!(commits[0].hash, "abc123");
-        assert_eq!(commits[0].message, "Initial commit");
-        assert_eq!(commits[1].author, "B Developer");
-    }
 
     #[test]
     fn parses_main_and_linked_worktrees() {
@@ -306,5 +386,32 @@ refs/remotes/origin/HEAD\0origin/HEAD\0 \0
         assert!(!branches[1].is_remote);
         assert_eq!(branches[2].name, "origin/main");
         assert!(branches[2].is_remote);
+    }
+
+    #[test]
+    fn parses_commit_history() {
+        let output = "\
+abc123\0Initial commit\0A Developer\02026-06-25T00:00:00+09:00\x1e
+def456\0Add feature\0B Developer\02026-06-25T01:00:00+09:00\x1e";
+
+        let commits = parse_commit_history(output).expect("history should parse");
+
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].hash, "abc123");
+        assert_eq!(commits[0].message, "Initial commit");
+        assert_eq!(commits[1].author, "B Developer");
+    }
+
+    #[test]
+    fn parses_commit_detail() {
+        let metadata = "abc123\0Initial commit\0A Developer\02026-06-25T00:00:00+09:00\n";
+        let files = "A\tREADME.md\nM\tapps/desktop/src/main.tsx\n";
+
+        let detail = parse_commit_detail(metadata, files).expect("detail should parse");
+
+        assert_eq!(detail.hash, "abc123");
+        assert_eq!(detail.files.len(), 2);
+        assert_eq!(detail.files[0].status, "A");
+        assert_eq!(detail.files[1].path, "apps/desktop/src/main.tsx");
     }
 }

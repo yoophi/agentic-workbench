@@ -10,7 +10,10 @@ use crate::{
         repository_service::RepositoryService, worktree_service::WorktreeService,
     },
     domain::{
-        branch::GitBranch, commit::GitCommitSummary, repository::Repository, worktree::GitWorktree,
+        branch::GitBranch,
+        commit::{GitCommitDetail, GitCommitSummary},
+        repository::Repository,
+        worktree::GitWorktree,
     },
 };
 
@@ -31,6 +34,13 @@ pub struct CreateRepositoryRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryRequest {
     repository_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCommitDetailRequest {
+    repository_id: String,
+    commit_hash: String,
 }
 
 #[tauri::command]
@@ -73,6 +83,14 @@ pub fn list_history(
     request: RepositoryRequest,
 ) -> Result<Vec<GitCommitSummary>, String> {
     history_service(app)?.list_history(request.repository_id)
+}
+
+#[tauri::command]
+pub fn get_commit_detail(
+    app: AppHandle,
+    request: GetCommitDetailRequest,
+) -> Result<GitCommitDetail, String> {
+    history_service(app)?.get_commit_detail(request.repository_id, request.commit_hash)
 }
 
 fn repository_service(
