@@ -19,9 +19,18 @@ export type GitWorktree = {
   isMain: boolean;
 };
 
+export type GitBranch = {
+  name: string;
+  fullName: string;
+  isRemote: boolean;
+  isCurrent: boolean;
+  worktreePath?: string | null;
+};
+
 export const repositoryKeys = {
   all: ["repositories"] as const,
   worktrees: (repositoryId: string) => ["repositories", repositoryId, "worktrees"] as const,
+  branches: (repositoryId: string) => ["repositories", repositoryId, "branches"] as const,
 };
 
 export function getAppInfo() {
@@ -42,6 +51,14 @@ export function createRepository(path: string) {
 
 export function listWorktrees(repositoryId: string) {
   return invoke<GitWorktree[]>("list_worktrees", {
+    request: {
+      repositoryId,
+    },
+  });
+}
+
+export function listBranches(repositoryId: string) {
+  return invoke<GitBranch[]>("list_branches", {
     request: {
       repositoryId,
     },

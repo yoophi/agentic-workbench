@@ -1,8 +1,8 @@
 use std::process::Command;
 
 use crate::{
-    application::ports::{GitRepositoryValidator, GitWorktreeReader},
-    domain::worktree::GitWorktree,
+    application::ports::{GitBranchReader, GitRepositoryValidator, GitWorktreeReader},
+    domain::{branch::GitBranch, worktree::GitWorktree},
 };
 
 pub struct GitCliRepositoryValidator;
@@ -57,6 +57,69 @@ impl GitWorktreeReader for GitCliRepositoryValidator {
 
         parse_worktree_porcelain(&stdout)
     }
+}
+
+impl GitBranchReader for GitCliRepositoryValidator {
+    fn list_branches(&self, repository_path: &str) -> Result<Vec<GitBranch>, String> {
+        let output = Command::new("git")
+            .args([
+                "-C",
+                repository_path,
+                "branch",
+                "--all",
+                "--format=%(refname)%00%(refname:short)%00%(HEAD)%00%(worktreepath)",
+            ])
+            .output()
+            .map_err(|error| format!("Failed to run git: {error}"))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if stderr.is_empty() {
+                "Failed to list Git branches.".to_string()
+            } else {
+                stderr
+            });
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+
+        parse_branch_format(&stdout)
+    }
+}
+
+fn parse_branch_format(output: &str) -> Result<Vec<GitBranch>, String> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let parts = line.split('\0').collect::<Vec<_>>();
+
+            if parts.len() < 4 {
+                return Some(Err(format!("Git branch output is invalid: {line}")));
+            }
+
+            let full_name = parts[0];
+
+            if full_name.starts_with("refs/remotes/") && full_name.ends_with("/HEAD") {
+                return None;
+            }
+
+            let worktree_path = if parts[3].is_empty() {
+                None
+            } else {
+                Some(parts[3].to_string())
+            };
+
+            Some(Ok(GitBranch::new(
+                parts[1].to_string(),
+                full_name.to_string(),
+                full_name.starts_with("refs/remotes/"),
+                parts[2] == "*",
+                worktree_path,
+            )))
+        })
+        .collect()
 }
 
 fn parse_worktree_porcelain(output: &str) -> Result<Vec<GitWorktree>, String> {
@@ -153,5 +216,26 @@ detached
         assert!(worktrees[0].is_bare);
         assert_eq!(worktrees[0].branch, None);
         assert_eq!(worktrees[1].branch, None);
+    }
+
+    #[test]
+    fn parses_local_and_remote_branches() {
+        let output = "\
+refs/heads/main\0main\0*\0/repo
+refs/heads/feature/foo\0feature/foo\0 \0/repo-feature
+refs/remotes/origin/main\0origin/main\0 \0
+refs/remotes/origin/HEAD\0origin/HEAD\0 \0
+";
+
+        let branches = parse_branch_format(output).expect("branches should parse");
+
+        assert_eq!(branches.len(), 3);
+        assert_eq!(branches[0].name, "main");
+        assert!(branches[0].is_current);
+        assert_eq!(branches[0].worktree_path.as_deref(), Some("/repo"));
+        assert_eq!(branches[1].name, "feature/foo");
+        assert!(!branches[1].is_remote);
+        assert_eq!(branches[2].name, "origin/main");
+        assert!(branches[2].is_remote);
     }
 }

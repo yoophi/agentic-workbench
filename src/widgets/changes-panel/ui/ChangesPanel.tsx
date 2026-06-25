@@ -1,5 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, FolderGit2, GitCommit, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  FolderGit2,
+  GitBranch as GitBranchIcon,
+  GitCommit,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@yoophi/ui/components/button";
 import {
   Table,
@@ -11,8 +18,10 @@ import {
 } from "@yoophi/ui/components/table";
 import {
   getAppInfo,
+  listBranches,
   listWorktrees,
   repositoryKeys,
+  type GitBranch,
   type GitWorktree,
   type Repository,
 } from "@/entities/repository";
@@ -20,6 +29,21 @@ import {
 type ChangesPanelProps = {
   selectedRepository?: Repository;
 };
+
+type BranchTreeRow =
+  | {
+      id: string;
+      depth: number;
+      name: string;
+      type: "folder";
+    }
+  | {
+      branch: GitBranch;
+      depth: number;
+      id: string;
+      name: string;
+      type: "branch";
+    };
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -37,6 +61,40 @@ function getShortCommit(commit: string) {
   return commit.slice(0, 8);
 }
 
+function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
+  const rows: BranchTreeRow[] = [];
+  const folders = new Set<string>();
+
+  for (const branch of [...branches].sort((a, b) => a.name.localeCompare(b.name))) {
+    const segments = branch.name.split("/").filter(Boolean);
+    let folderPath = "";
+
+    for (const [index, segment] of segments.slice(0, -1).entries()) {
+      folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+
+      if (!folders.has(folderPath)) {
+        folders.add(folderPath);
+        rows.push({
+          id: `folder:${folderPath}`,
+          depth: index,
+          name: segment,
+          type: "folder",
+        });
+      }
+    }
+
+    rows.push({
+      branch,
+      depth: Math.max(segments.length - 1, 0),
+      id: branch.fullName,
+      name: segments[segments.length - 1] ?? branch.name,
+      type: "branch",
+    });
+  }
+
+  return rows;
+}
+
 export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const appInfo = useQuery({
     queryKey: ["app-info"],
@@ -49,6 +107,15 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "worktrees"],
     queryFn: () => listWorktrees(selectedRepository?.id ?? ""),
   });
+  const branchesQuery = useQuery({
+    enabled: Boolean(selectedRepository),
+    queryKey: selectedRepository
+      ? repositoryKeys.branches(selectedRepository.id)
+      : ["repositories", "unselected", "branches"],
+    queryFn: () => listBranches(selectedRepository?.id ?? ""),
+  });
+  const branchRows = buildBranchTreeRows(branchesQuery.data ?? []);
+  const isRefreshing = worktreesQuery.isFetching || branchesQuery.isFetching;
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -68,18 +135,21 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
           </div>
         </div>
         <Button
-          aria-label="Refresh worktrees"
-          disabled={!selectedRepository || worktreesQuery.isFetching}
+          aria-label="Refresh repository data"
+          disabled={!selectedRepository || isRefreshing}
           size="icon-sm"
           variant="outline"
-          onClick={() => void worktreesQuery.refetch()}
+          onClick={() => {
+            void worktreesQuery.refetch();
+            void branchesQuery.refetch();
+          }}
         >
-          {worktreesQuery.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          {isRefreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto">
         {!selectedRepository ? (
-          <div className="flex h-full min-h-80 items-center justify-center">
+          <div className="flex h-full min-h-80 items-center justify-center p-4">
             <div className="max-w-sm text-center">
               <FolderGit2 className="mx-auto size-10 text-muted-foreground" />
               <h2 className="mt-3 text-sm font-medium">No repository selected</h2>
@@ -88,53 +158,110 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               </p>
             </div>
           </div>
-        ) : worktreesQuery.isLoading ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading worktrees
-          </p>
-        ) : worktreesQuery.isError ? (
-          <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>{getErrorMessage(worktreesQuery.error)}</span>
-          </p>
-        ) : worktreesQuery.data?.length === 0 ? (
-          <div className="flex h-full min-h-80 items-center justify-center">
-            <div className="max-w-sm text-center">
-              <FolderGit2 className="mx-auto size-10 text-muted-foreground" />
-              <h2 className="mt-3 text-sm font-medium">No worktrees found</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                This repository does not have any Git worktrees to display.
-              </p>
+        ) : (
+          <div className="grid gap-6 p-4">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <FolderGit2 className="size-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Worktrees</h3>
+              </div>
+              {worktreesQuery.isLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading worktrees
+                </p>
+              ) : worktreesQuery.isError ? (
+                <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>{getErrorMessage(worktreesQuery.error)}</span>
+                </p>
+              ) : worktreesQuery.data?.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No worktrees found.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Path</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead className="w-28">Commit</TableHead>
+                      <TableHead className="w-24">Kind</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {worktreesQuery.data?.map((worktree) => (
+                      <TableRow key={worktree.path}>
+                        <TableCell className="max-w-0 truncate font-mono text-xs">
+                          {worktree.path}
+                        </TableCell>
+                        <TableCell className="max-w-0 truncate">
+                          {worktree.branch ?? "Detached"}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {getShortCommit(worktree.commit)}
+                        </TableCell>
+                        <TableCell>{getWorktreeKind(worktree)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <GitBranchIcon className="size-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Branches</h3>
+              </div>
+              {branchesQuery.isLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading branches
+                </p>
+              ) : branchesQuery.isError ? (
+                <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>{getErrorMessage(branchesQuery.error)}</span>
+                </p>
+              ) : branchRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No branches found.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-24">Scope</TableHead>
+                      <TableHead className="w-24">State</TableHead>
+                      <TableHead>Worktree</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {branchRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell
+                          className="max-w-0 truncate"
+                          style={{ paddingLeft: `${12 + row.depth * 18}px` }}
+                        >
+                          {row.type === "folder" ? (
+                            <span className="text-muted-foreground">{row.name}</span>
+                          ) : (
+                            row.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.type === "branch" ? (row.branch.isRemote ? "Remote" : "Local") : ""}
+                        </TableCell>
+                        <TableCell>
+                          {row.type === "branch" && row.branch.isCurrent ? "Current" : ""}
+                        </TableCell>
+                        <TableCell className="max-w-0 truncate font-mono text-xs text-muted-foreground">
+                          {row.type === "branch" ? (row.branch.worktreePath ?? "") : ""}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
           </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Path</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead className="w-28">Commit</TableHead>
-                <TableHead className="w-24">Kind</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {worktreesQuery.data?.map((worktree) => (
-                <TableRow key={worktree.path}>
-                  <TableCell className="max-w-0 truncate font-mono text-xs">
-                    {worktree.path}
-                  </TableCell>
-                  <TableCell className="max-w-0 truncate">
-                    {worktree.branch ?? "Detached"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {getShortCommit(worktree.commit)}
-                  </TableCell>
-                  <TableCell>{getWorktreeKind(worktree)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         )}
       </div>
     </section>
