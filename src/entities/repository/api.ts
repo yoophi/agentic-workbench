@@ -34,6 +34,42 @@ export type GitCommitSummary = {
   date: string;
 };
 
+export type GitCommitGraph = {
+  commits: GitGraphCommit[];
+  refs: GitGraphRef[];
+  page: GitGraphPage;
+  layoutHints: GitGraphLayoutHints;
+};
+
+export type GitGraphCommit = {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  message: string;
+  author: string;
+  date: string;
+  isHead: boolean;
+  isMerge: boolean;
+};
+
+export type GitGraphPage = {
+  offset: number;
+  limit: number;
+  totalCount: number;
+  hasMore: boolean;
+};
+
+export type GitGraphLayoutHints = {
+  rowHeight: number;
+  maxInitialLanes: number;
+};
+
+export type GitGraphRef = {
+  name: string;
+  target: string;
+  kind: "localBranch" | "remoteBranch" | "tag";
+};
+
 export type GitCommitFileChange = {
   path: string;
   status: string;
@@ -56,6 +92,8 @@ export const repositoryKeys = {
   worktrees: (repositoryId: string) => ["repositories", repositoryId, "worktrees"] as const,
   branches: (repositoryId: string) => ["repositories", repositoryId, "branches"] as const,
   history: (repositoryId: string) => ["repositories", repositoryId, "history"] as const,
+  commitGraph: (repositoryId: string, options?: { maxCount?: number; offset?: number }) =>
+    ["repositories", repositoryId, "commitGraph", options?.maxCount ?? 300, options?.offset ?? 0] as const,
   commitDetail: (repositoryId: string, commitHash: string) =>
     ["repositories", repositoryId, "commits", commitHash] as const,
   fileDiff: (repositoryId: string, commitHash: string, filePath: string) =>
@@ -115,6 +153,16 @@ export function listHistory(repositoryId: string) {
   return invoke<GitCommitSummary[]>("list_history", {
     request: {
       repositoryId,
+    },
+  });
+}
+
+export function getCommitGraph(repositoryId: string, options?: { maxCount?: number; offset?: number }) {
+  return invoke<GitCommitGraph>("get_commit_graph", {
+    request: {
+      repositoryId,
+      maxCount: options?.maxCount,
+      offset: options?.offset,
     },
   });
 }

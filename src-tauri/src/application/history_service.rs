@@ -1,7 +1,10 @@
 use crate::{
     application::ports::{GitHistoryReader, RepositoryStore},
-    domain::commit::{GitCommitDetail, GitCommitSummary, GitFileDiff},
+    domain::commit::{GitCommitDetail, GitCommitGraph, GitCommitSummary, GitFileDiff},
 };
+
+const DEFAULT_GRAPH_LIMIT: usize = 300;
+const MAX_GRAPH_LIMIT: usize = 500;
 
 pub struct HistoryService<S, R>
 where
@@ -25,6 +28,22 @@ where
         let repository_path = self.registered_repository_path(repository_id)?;
 
         self.reader.list_history(&repository_path)
+    }
+
+    pub fn get_commit_graph(
+        &self,
+        repository_id: String,
+        max_count: Option<usize>,
+        offset: Option<usize>,
+    ) -> Result<GitCommitGraph, String> {
+        let repository_path = self.registered_repository_path(repository_id)?;
+        let limit = max_count
+            .unwrap_or(DEFAULT_GRAPH_LIMIT)
+            .clamp(1, MAX_GRAPH_LIMIT);
+        let offset = offset.unwrap_or(0);
+
+        self.reader
+            .get_commit_graph(&repository_path, limit, offset)
     }
 
     pub fn get_commit_detail(
@@ -122,6 +141,20 @@ mod tests {
             Ok(self.commits.clone())
         }
 
+        fn get_commit_graph(
+            &self,
+            _repository_path: &str,
+            limit: usize,
+            offset: usize,
+        ) -> Result<GitCommitGraph, String> {
+            Ok(GitCommitGraph::new(
+                Vec::new(),
+                Vec::new(),
+                crate::domain::commit::GitGraphPage::new(offset, limit, 0, 0),
+                crate::domain::commit::GitGraphLayoutHints::default_row_layout(),
+            ))
+        }
+
         fn get_commit_detail(
             &self,
             _repository_path: &str,
@@ -198,6 +231,31 @@ mod tests {
                 .expect("history should be returned"),
             commits
         );
+    }
+
+    #[test]
+    fn returns_commit_graph_for_registered_repository() {
+        let store = MemoryStore::default();
+        store
+            .save_all(&[Repository::new(
+                "/tmp/repo".to_string(),
+                "repo".to_string(),
+                "/tmp/repo".to_string(),
+            )])
+            .expect("repository should be stored");
+        let service = HistoryService::new(
+            store,
+            StaticHistoryReader {
+                commits: Vec::new(),
+            },
+        );
+
+        let graph = service
+            .get_commit_graph("/tmp/repo".to_string(), Some(1000), Some(2))
+            .expect("commit graph should be returned");
+
+        assert_eq!(graph.page.limit, 500);
+        assert_eq!(graph.page.offset, 2);
     }
 
     #[test]
