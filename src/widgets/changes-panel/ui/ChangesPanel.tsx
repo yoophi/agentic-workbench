@@ -3,7 +3,12 @@ import type { Layout } from "react-resizable-panels";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Folder,
   FolderGit2,
+  FolderOpen,
+  FileText,
   GitBranch as GitBranchIcon,
   GitCommit,
   Loader2,
@@ -33,6 +38,7 @@ import {
   listWorktrees,
   repositoryKeys,
   type GitBranch,
+  type GitCommitFileChange,
   type GitCommitGraph,
   type GitGraphCommit,
   type GitGraphRef,
@@ -51,6 +57,7 @@ type ChangesPanelProps = {
 };
 
 type HistoryView = "list" | "graph";
+type FileChangeView = "tree" | "list";
 
 const CHANGES_LAYOUT_STORAGE_KEY = "repository-detail-columns-layout";
 
@@ -58,7 +65,9 @@ type BranchTreeRow =
   | {
       id: string;
       depth: number;
+      isExpanded: boolean;
       name: string;
+      path: string;
       type: "folder";
     }
   | {
@@ -68,6 +77,30 @@ type BranchTreeRow =
       name: string;
       type: "branch";
     };
+
+type FileTreeRow =
+  | {
+      depth: number;
+      id: string;
+      isExpanded: boolean;
+      name: string;
+      path: string;
+      type: "folder";
+    }
+  | {
+      depth: number;
+      file: GitCommitFileChange;
+      id: string;
+      name: string;
+      type: "file";
+    };
+
+type FileTreeFolderNode = {
+  files: GitCommitFileChange[];
+  folders: Map<string, FileTreeFolderNode>;
+  name: string;
+  path: string;
+};
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -181,6 +214,158 @@ function refsByTarget(refs: GitGraphRef[]) {
   return result;
 }
 
+function diffLineClassName(line: string) {
+  if (line.startsWith("+++") || line.startsWith("---")) {
+    return "bg-muted/70 text-muted-foreground";
+  }
+
+  if (line.startsWith("@@")) {
+    return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  }
+
+  if (line.startsWith("+")) {
+    return "bg-green-500/15 text-green-800 dark:text-green-200";
+  }
+
+  if (line.startsWith("-")) {
+    return "bg-red-500/15 text-red-800 dark:text-red-200";
+  }
+
+  if (line.startsWith("diff --git") || line.startsWith("index ")) {
+    return "bg-muted/40 text-muted-foreground";
+  }
+
+  return "text-foreground";
+}
+
+function fileStatusClassName(status: string) {
+  const normalizedStatus = status.charAt(0).toUpperCase();
+
+  if (normalizedStatus === "A") {
+    return "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300";
+  }
+
+  if (normalizedStatus === "M") {
+    return "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300";
+  }
+
+  if (normalizedStatus === "D") {
+    return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
+  }
+
+  if (normalizedStatus === "R") {
+    return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  }
+
+  if (normalizedStatus === "C") {
+    return "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300";
+  }
+
+  return "border-border bg-background text-muted-foreground";
+}
+
+type DiffLine = {
+  content: string;
+  newLineNumber?: number;
+  oldLineNumber?: number;
+};
+
+function parseHunkHeader(line: string) {
+  const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    oldLineNumber: Number.parseInt(match[1], 10),
+    newLineNumber: Number.parseInt(match[2], 10),
+  };
+}
+
+function parseDiffLines(content: string): DiffLine[] {
+  const lines = content ? content.split("\n") : ["No text diff available."];
+  let oldLineNumber = 0;
+  let newLineNumber = 0;
+
+  return lines.map((line) => {
+    const hunk = parseHunkHeader(line);
+
+    if (hunk) {
+      oldLineNumber = hunk.oldLineNumber;
+      newLineNumber = hunk.newLineNumber;
+      return { content: line };
+    }
+
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      return { content: line };
+    }
+
+    if (line.startsWith("+")) {
+      const currentNewLineNumber = newLineNumber;
+      newLineNumber += 1;
+
+      return {
+        content: line,
+        newLineNumber: currentNewLineNumber,
+      };
+    }
+
+    if (line.startsWith("-")) {
+      const currentOldLineNumber = oldLineNumber;
+      oldLineNumber += 1;
+
+      return {
+        content: line,
+        oldLineNumber: currentOldLineNumber,
+      };
+    }
+
+    if (
+      line.startsWith("diff --git") ||
+      line.startsWith("index ") ||
+      line.startsWith("new file mode ") ||
+      line.startsWith("deleted file mode ")
+    ) {
+      return { content: line };
+    }
+
+    const currentOldLineNumber = oldLineNumber;
+    const currentNewLineNumber = newLineNumber;
+    oldLineNumber += 1;
+    newLineNumber += 1;
+
+    return {
+      content: line,
+      oldLineNumber: currentOldLineNumber,
+      newLineNumber: currentNewLineNumber,
+    };
+  });
+}
+
+function DiffViewer({ content }: { content: string }) {
+  const lines = parseDiffLines(content);
+
+  return (
+    <pre className="max-h-96 overflow-auto rounded-md border bg-background font-mono text-xs leading-5">
+      {lines.map((line, index) => (
+        <div
+          className={`grid min-w-max grid-cols-[3.5rem_3.5rem_minmax(0,1fr)] whitespace-pre ${diffLineClassName(line.content)}`}
+          key={`${index}:${line.content}`}
+        >
+          <span className="select-none border-r px-2 text-right text-muted-foreground/70">
+            {line.oldLineNumber ?? ""}
+          </span>
+          <span className="select-none border-r px-2 text-right text-muted-foreground/70">
+            {line.newLineNumber ?? ""}
+          </span>
+          <span className="px-3">{line.content || " "}</span>
+        </div>
+      ))}
+    </pre>
+  );
+}
+
 function HistoryGraphView({
   graph,
   graphRefs,
@@ -275,7 +460,41 @@ function HistoryGraphRow({
   );
 }
 
-function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
+function getBranchFolderPaths(branches: GitBranch[]) {
+  const folders = new Set<string>();
+
+  for (const branch of branches) {
+    const segments = branch.name.split("/").filter(Boolean);
+    let folderPath = "";
+
+    for (const segment of segments.slice(0, -1)) {
+      folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+      folders.add(folderPath);
+    }
+  }
+
+  return folders;
+}
+
+function isBranchVisible(branchName: string, expandedFolders: ReadonlySet<string>) {
+  const segments = branchName.split("/").filter(Boolean);
+  let folderPath = "";
+
+  for (const segment of segments.slice(0, -1)) {
+    folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+
+    if (!expandedFolders.has(folderPath)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildBranchTreeRows(
+  branches: GitBranch[],
+  expandedFolders: ReadonlySet<string>,
+): BranchTreeRow[] {
   const rows: BranchTreeRow[] = [];
   const folders = new Set<string>();
 
@@ -285,26 +504,162 @@ function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
 
     for (const [index, segment] of segments.slice(0, -1).entries()) {
       folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+      const parentPath = folderPath.includes("/")
+        ? folderPath.slice(0, folderPath.lastIndexOf("/"))
+        : "";
+
+      if (parentPath && !expandedFolders.has(parentPath)) {
+        continue;
+      }
 
       if (!folders.has(folderPath)) {
         folders.add(folderPath);
         rows.push({
           id: `folder:${folderPath}`,
           depth: index,
+          isExpanded: expandedFolders.has(folderPath),
           name: segment,
+          path: folderPath,
           type: "folder",
         });
       }
     }
 
+    if (isBranchVisible(branch.name, expandedFolders)) {
+      rows.push({
+        branch,
+        depth: Math.max(segments.length - 1, 0),
+        id: branch.fullName,
+        name: segments[segments.length - 1] ?? branch.name,
+        type: "branch",
+      });
+    }
+  }
+
+  return rows;
+}
+
+function getFileFolderPaths(files: GitCommitFileChange[]) {
+  const folders = new Set<string>();
+
+  for (const file of files) {
+    const segments = file.path.split("/").filter(Boolean);
+    let folderPath = "";
+
+    for (const segment of segments.slice(0, -1)) {
+      folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+      folders.add(folderPath);
+    }
+  }
+
+  return folders;
+}
+
+function createFileTreeFolderNode(name: string, path: string): FileTreeFolderNode {
+  return {
+    files: [],
+    folders: new Map(),
+    name,
+    path,
+  };
+}
+
+function buildFileTree(files: GitCommitFileChange[]) {
+  const root = createFileTreeFolderNode("", "");
+
+  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+    const segments = file.path.split("/").filter(Boolean);
+
+    if (segments.length === 0) {
+      continue;
+    }
+
+    let current = root;
+
+    for (const segment of segments.slice(0, -1)) {
+      const folderPath = current.path ? `${current.path}/${segment}` : segment;
+      let child = current.folders.get(segment);
+
+      if (!child) {
+        child = createFileTreeFolderNode(segment, folderPath);
+        current.folders.set(segment, child);
+      }
+
+      current = child;
+    }
+
+    current.files.push(file);
+  }
+
+  return root;
+}
+
+function compressFileTreeFolder(node: FileTreeFolderNode) {
+  const names = [node.name];
+  let current = node;
+
+  while (current.files.length === 0 && current.folders.size === 1) {
+    const [next] = current.folders.values();
+
+    if (!next) {
+      break;
+    }
+
+    names.push(next.name);
+    current = next;
+  }
+
+  return {
+    name: names.join("/"),
+    node: current,
+  };
+}
+
+function appendFileTreeRows(
+  node: FileTreeFolderNode,
+  depth: number,
+  expandedFolders: ReadonlySet<string>,
+  rows: FileTreeRow[],
+) {
+  const folderNodes = [...node.folders.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const folderNode of folderNodes) {
+    const compressedFolder = compressFileTreeFolder(folderNode);
+    const isExpanded = expandedFolders.has(compressedFolder.node.path);
+
     rows.push({
-      branch,
-      depth: Math.max(segments.length - 1, 0),
-      id: branch.fullName,
-      name: segments[segments.length - 1] ?? branch.name,
-      type: "branch",
+      depth,
+      id: `folder:${compressedFolder.node.path}`,
+      isExpanded,
+      name: compressedFolder.name,
+      path: compressedFolder.node.path,
+      type: "folder",
+    });
+
+    if (isExpanded) {
+      appendFileTreeRows(compressedFolder.node, depth + 1, expandedFolders, rows);
+    }
+  }
+
+  for (const file of [...node.files].sort((a, b) => a.path.localeCompare(b.path))) {
+    const segments = file.path.split("/").filter(Boolean);
+
+    rows.push({
+      depth,
+      file,
+      id: `file:${file.status}:${file.path}`,
+      name: segments[segments.length - 1] ?? file.path,
+      type: "file",
     });
   }
+}
+
+function buildFileTreeRows(
+  files: GitCommitFileChange[],
+  expandedFolders: ReadonlySet<string>,
+): FileTreeRow[] {
+  const rows: FileTreeRow[] = [];
+  appendFileTreeRows(buildFileTree(files), 0, expandedFolders, rows);
 
   return rows;
 }
@@ -313,6 +668,9 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const [selectedCommitHash, setSelectedCommitHash] = useState<string>();
   const [selectedFilePath, setSelectedFilePath] = useState<string>();
   const [historyView, setHistoryView] = useState<HistoryView>("list");
+  const [fileChangeView, setFileChangeView] = useState<FileChangeView>("tree");
+  const [expandedBranchFolders, setExpandedBranchFolders] = useState<Set<string>>(new Set());
+  const [expandedFileFolders, setExpandedFileFolders] = useState<Set<string>>(new Set());
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
@@ -362,7 +720,8 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
     queryFn: () =>
       getFileDiff(selectedRepository?.id ?? "", selectedCommitHash ?? "", selectedFilePath ?? ""),
   });
-  const branchRows = buildBranchTreeRows(branchesQuery.data ?? []);
+  const branchRows = buildBranchTreeRows(branchesQuery.data ?? [], expandedBranchFolders);
+  const fileRows = buildFileTreeRows(commitDetailQuery.data?.files ?? [], expandedFileFolders);
   const graphData = graphQuery.data;
   const graphRows = graphData ? computeGitGraphRows(graphData.commits) : new Map<string, GitGraphRow>();
   const maxGraphLane = getMaxGraphLane(graphRows);
@@ -383,6 +742,42 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   useEffect(() => {
     setSelectedFilePath(undefined);
   }, [selectedCommitHash]);
+
+  useEffect(() => {
+    setExpandedBranchFolders(getBranchFolderPaths(branchesQuery.data ?? []));
+  }, [branchesQuery.data]);
+
+  useEffect(() => {
+    setExpandedFileFolders(getFileFolderPaths(commitDetailQuery.data?.files ?? []));
+  }, [commitDetailQuery.data?.files]);
+
+  function toggleBranchFolder(path: string) {
+    setExpandedBranchFolders((current) => {
+      const next = new Set(current);
+
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleFileFolder(path: string) {
+    setExpandedFileFolders((current) => {
+      const next = new Set(current);
+
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+
+      return next;
+    });
+  }
 
   const repositoryInfo = (
     <section className="flex h-full min-h-0 flex-col">
@@ -508,37 +903,50 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               ) : branchRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No branches found.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead className="w-20">Scope</TableHead>
-                      <TableHead className="w-20">State</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {branchRows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell
-                          className="max-w-0 truncate"
-                          style={{ paddingLeft: `${12 + row.depth * 18}px` }}
-                        >
-                          {row.type === "folder" ? (
-                            <span className="text-muted-foreground">{row.name}</span>
-                          ) : (
-                            row.name
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.type === "branch" ? (row.branch.isRemote ? "Remote" : "Local") : ""}
-                        </TableCell>
-                        <TableCell>
-                          {row.type === "branch" && row.branch.isCurrent ? "Current" : ""}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="overflow-hidden rounded-md border text-sm">
+                  {branchRows.map((row) =>
+                    row.type === "folder" ? (
+                      <button
+                        aria-expanded={row.isExpanded}
+                        className="flex h-8 w-full items-center gap-1 border-b px-2 text-left last:border-b-0 hover:bg-muted/50"
+                        key={row.id}
+                        onClick={() => toggleBranchFolder(row.path)}
+                        style={{ paddingLeft: `${8 + row.depth * 18}px` }}
+                        type="button"
+                      >
+                        {row.isExpanded ? (
+                          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        {row.isExpanded ? (
+                          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <Folder className="size-4 shrink-0 text-muted-foreground" />
+                        )}
+                        <span className="min-w-0 truncate text-muted-foreground">{row.name}</span>
+                      </button>
+                    ) : (
+                      <div
+                        className="flex h-8 items-center gap-2 border-b px-2 last:border-b-0"
+                        key={row.id}
+                        style={{ paddingLeft: `${28 + row.depth * 18}px` }}
+                        title={row.branch.fullName}
+                      >
+                        <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{row.name}</span>
+                        <span className="shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                          {row.branch.isRemote ? "remote" : "local"}
+                        </span>
+                        {row.branch.isCurrent ? (
+                          <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] leading-none">
+                            current
+                          </span>
+                        ) : null}
+                      </div>
+                    ),
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -699,33 +1107,107 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               </p>
             </div>
             <div className="grid gap-3">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-20">Status</TableHead>
-                    <TableHead>File</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {commitDetailQuery.data.files.map((file) => {
-                    const isSelected = file.path === selectedFilePath;
-
-                    return (
-                      <TableRow
-                        className="cursor-pointer data-[selected=true]:bg-muted"
-                        data-selected={isSelected}
-                        key={`${file.status}:${file.path}`}
-                        onClick={() => setSelectedFilePath(file.path)}
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Changed files</h3>
+                <div className="flex rounded-md border p-0.5">
+                  <Button
+                    size="sm"
+                    variant={fileChangeView === "tree" ? "secondary" : "ghost"}
+                    onClick={() => setFileChangeView("tree")}
+                  >
+                    Tree
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={fileChangeView === "list" ? "secondary" : "ghost"}
+                    onClick={() => setFileChangeView("list")}
+                  >
+                    List
+                  </Button>
+                </div>
+              </div>
+              {fileChangeView === "tree" ? (
+                <div className="overflow-hidden rounded-md border text-sm">
+                  {fileRows.map((row) =>
+                    row.type === "folder" ? (
+                      <button
+                        aria-expanded={row.isExpanded}
+                        className="flex h-8 w-full items-center gap-1 border-b px-2 text-left last:border-b-0 hover:bg-muted/50"
+                        key={row.id}
+                        onClick={() => toggleFileFolder(row.path)}
+                        style={{ paddingLeft: `${8 + row.depth * 18}px` }}
+                        type="button"
                       >
-                        <TableCell className="font-mono text-xs">{file.status}</TableCell>
-                        <TableCell className="max-w-0 truncate font-mono text-xs">
-                          {file.path}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                        {row.isExpanded ? (
+                          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        {row.isExpanded ? (
+                          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <Folder className="size-4 shrink-0 text-muted-foreground" />
+                        )}
+                        <span className="min-w-0 truncate text-muted-foreground">{row.name}</span>
+                      </button>
+                    ) : (
+                      <button
+                        className="flex h-8 w-full items-center gap-2 border-b px-2 text-left last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
+                        data-selected={row.file.path === selectedFilePath}
+                        key={row.id}
+                        onClick={() => setSelectedFilePath(row.file.path)}
+                        style={{ paddingLeft: `${28 + row.depth * 18}px` }}
+                        title={row.file.path}
+                        type="button"
+                      >
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                          {row.name}
+                        </span>
+                        <span
+                          className={`ml-auto shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] leading-none ${fileStatusClassName(row.file.status)}`}
+                        >
+                          {row.file.status}
+                        </span>
+                      </button>
+                    ),
+                  )}
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-20">Status</TableHead>
+                      <TableHead>File</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {commitDetailQuery.data.files.map((file) => {
+                      const isSelected = file.path === selectedFilePath;
+
+                      return (
+                        <TableRow
+                          className="cursor-pointer data-[selected=true]:bg-muted"
+                          data-selected={isSelected}
+                          key={`${file.status}:${file.path}`}
+                          onClick={() => setSelectedFilePath(file.path)}
+                        >
+                          <TableCell className="font-mono text-xs">
+                            <span
+                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] leading-none ${fileStatusClassName(file.status)}`}
+                            >
+                              {file.status}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-0 truncate font-mono text-xs">
+                            {file.path}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
               {!selectedFilePath ? (
                 <p className="text-sm text-muted-foreground">
                   Select a changed file to inspect its diff.
@@ -749,9 +1231,7 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
                   {fileDiffQuery.data.isTruncated ? (
                     <p className="text-xs text-muted-foreground">Large diff truncated for display.</p>
                   ) : null}
-                  <pre className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-5">
-                    {fileDiffQuery.data.content || "No text diff available."}
-                  </pre>
+                  <DiffViewer content={fileDiffQuery.data.content} />
                 </div>
               ) : null}
             </div>

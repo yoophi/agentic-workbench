@@ -18,6 +18,7 @@ export type {
   AppInfo,
   GitBranch,
   GitCommitDetail,
+  GitCommitFileChange,
   GitCommitGraph,
   GitCommitSummary,
   GitFileDiff,
