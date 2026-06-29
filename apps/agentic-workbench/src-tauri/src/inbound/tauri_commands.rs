@@ -9,6 +9,7 @@ use crate::{
         list_provider_sessions::ListProviderSessionsUseCase, project_service, saved_prompt_service,
         send_prompt::SendPromptUseCase, set_permission_mode::SetPermissionModeUseCase,
         start_agent_run::StartAgentRunUseCase, worktree_changes_service, worktree_file_service,
+        worktree_git_service,
     },
     domain::{
         agent::AgentDescriptor,
@@ -24,6 +25,9 @@ use crate::{
         saved_prompt::{SavedPrompt, SavedPromptDraft},
         worktree_change::WorktreeChange,
         worktree_file::{WorktreeFileEntry, WorktreeTextFile},
+        worktree_git::{
+            GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff as WorktreeGitFileDiff,
+        },
     },
     infrastructure::{
         acp::runner::AcpAgentRunner, agent_catalog::ConfigurableAgentCatalog,
@@ -34,6 +38,7 @@ use crate::{
         git_cli_remote_provider::GitCliRemoteProvider,
         git_cli_worktree_change_provider::GitCliWorktreeChangeProvider,
         git_cli_worktree_changes_provider::GitCliWorktreeChangesProvider,
+        git_cli_worktree_git_provider::GitCliWorktreeGitProvider,
         git_cli_worktree_provider::GitCliWorktreeProvider,
         json_acp_session_store::JsonAcpSessionStore,
         json_agent_run_settings_repository::JsonAgentRunSettingsRepository,
@@ -305,6 +310,60 @@ pub fn read_worktree_text_file(
     path: String,
 ) -> Result<WorktreeTextFile, String> {
     worktree_file_service::read_worktree_text_file(&FsWorktreeFileProvider, working_directory, path)
+}
+
+#[tauri::command]
+pub fn list_worktree_git_history(
+    working_directory: String,
+    max_count: Option<usize>,
+    offset: Option<usize>,
+) -> Result<GitCommitHistory, String> {
+    worktree_git_service::list_worktree_git_history(
+        &GitCliWorktreeGitProvider,
+        working_directory,
+        max_count,
+        offset,
+    )
+}
+
+#[tauri::command]
+pub fn get_worktree_git_graph(
+    working_directory: String,
+    max_count: Option<usize>,
+    offset: Option<usize>,
+) -> Result<GitCommitGraph, String> {
+    worktree_git_service::get_worktree_git_graph(
+        &GitCliWorktreeGitProvider,
+        working_directory,
+        max_count,
+        offset,
+    )
+}
+
+#[tauri::command]
+pub fn get_worktree_commit_detail(
+    working_directory: String,
+    commit_hash: String,
+) -> Result<GitCommitDetail, String> {
+    worktree_git_service::get_worktree_commit_detail(
+        &GitCliWorktreeGitProvider,
+        working_directory,
+        commit_hash,
+    )
+}
+
+#[tauri::command]
+pub fn get_worktree_commit_file_diff(
+    working_directory: String,
+    commit_hash: String,
+    path: String,
+) -> Result<WorktreeGitFileDiff, String> {
+    worktree_git_service::get_worktree_commit_file_diff(
+        &GitCliWorktreeGitProvider,
+        working_directory,
+        commit_hash,
+        path,
+    )
 }
 
 #[tauri::command]

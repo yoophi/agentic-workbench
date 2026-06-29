@@ -3,6 +3,10 @@ import {
   sampleAgentRunWorktreeChanges,
   sampleBranches,
   sampleGoal,
+  sampleGitCommitDetail,
+  sampleGitFileDiff,
+  sampleGitGraph,
+  sampleGitHistory,
   sampleProjects,
   sampleRemotes,
   sampleSavedPrompts,
@@ -166,6 +170,17 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
       }
       return file as T;
     }
+    case "list_worktree_git_history":
+      return sampleGitHistory as T;
+    case "get_worktree_git_graph":
+      return sampleGitGraph as T;
+    case "get_worktree_commit_detail":
+      return sampleGitCommitDetail as T;
+    case "get_worktree_commit_file_diff":
+      return {
+        ...sampleGitFileDiff,
+        path: String(args?.path ?? sampleGitFileDiff.path),
+      } as T;
     case "list_agents":
       return sampleAgents as T;
     case "start_agent_run": {

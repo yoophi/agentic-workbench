@@ -13,6 +13,12 @@ import type {
   WorktreeFileEntry,
   WorktreeTextFile,
 } from "@/entities/worktree-file/model/types";
+import type {
+  GitCommitDetail,
+  GitCommitGraph,
+  GitCommitHistory,
+  GitFileDiff,
+} from "@/entities/worktree-git/model/types";
 
 export const sampleProjects: Project[] = [
   {
@@ -233,6 +239,99 @@ export const sampleWorktreeTextFiles: Record<string, WorktreeTextFile> = {
     size: 1820,
     truncated: false,
   },
+};
+
+export const sampleGitHistory: GitCommitHistory = {
+  commits: [
+    {
+      hash: "f6a4a7f7b7a3147d3eeb76e8c9bc90f7cdbf9011",
+      message: "feat: add workspace file preview",
+      author: "Yoophi",
+      date: "2026-06-30T01:18:00Z",
+    },
+    {
+      hash: "91fb001a3d52d237c1b8508f12f9ad1dd7593f00",
+      message: "refine prompt actions and tool timeline",
+      author: "Yoophi",
+      date: "2026-06-29T23:30:00Z",
+    },
+  ],
+  page: {
+    offset: 0,
+    limit: 100,
+    totalCount: 2,
+    hasMore: false,
+  },
+};
+
+export const sampleGitGraph: GitCommitGraph = {
+  commits: [
+    {
+      hash: "f6a4a7f7b7a3147d3eeb76e8c9bc90f7cdbf9011",
+      shortHash: "f6a4a7f",
+      parents: ["91fb001a3d52d237c1b8508f12f9ad1dd7593f00"],
+      message: "feat: add workspace file preview",
+      author: "Yoophi",
+      date: "2026-06-30T01:18:00Z",
+      isHead: true,
+      isMerge: false,
+    },
+    {
+      hash: "91fb001a3d52d237c1b8508f12f9ad1dd7593f00",
+      shortHash: "91fb001",
+      parents: [],
+      message: "refine prompt actions and tool timeline",
+      author: "Yoophi",
+      date: "2026-06-29T23:30:00Z",
+      isHead: false,
+      isMerge: false,
+    },
+  ],
+  refs: [
+    {
+      name: "feature/project-worktree-session-workspace",
+      target: "f6a4a7f7b7a3147d3eeb76e8c9bc90f7cdbf9011",
+      kind: "localBranch",
+    },
+  ],
+  page: {
+    offset: 0,
+    limit: 300,
+    totalCount: 2,
+    hasMore: false,
+  },
+  layoutHints: {
+    rowHeight: 32,
+    maxInitialLanes: 10,
+  },
+};
+
+export const sampleGitCommitDetail: GitCommitDetail = {
+  ...sampleGitHistory.commits[0],
+  files: [
+    {
+      path: "apps/agentic-workbench/src/features/worktree-workspace/ui/worktree-workspace-panel.tsx",
+      status: "M",
+    },
+    {
+      path: "apps/agentic-workbench/src-tauri/src/infrastructure/fs_worktree_file_provider.rs",
+      status: "A",
+    },
+  ],
+};
+
+export const sampleGitFileDiff: GitFileDiff = {
+  commitHash: sampleGitCommitDetail.hash,
+  path: sampleGitCommitDetail.files[0].path,
+  content: [
+    "diff --git a/worktree-workspace-panel.tsx b/worktree-workspace-panel.tsx",
+    "@@ -1,3 +1,4 @@",
+    "+export function WorktreeWorkspacePanel() {",
+    "+  return <section />;",
+    "+}",
+  ].join("\n"),
+  isBinary: false,
+  isTruncated: false,
 };
 
 export const sampleGoal: ThreadGoal = {

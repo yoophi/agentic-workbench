@@ -23,3 +23,5 @@ pub mod worktree_change;
 pub mod worktree_change_provider;
 pub mod worktree_file;
 pub mod worktree_file_provider;
+pub mod worktree_git;
+pub mod worktree_git_provider;

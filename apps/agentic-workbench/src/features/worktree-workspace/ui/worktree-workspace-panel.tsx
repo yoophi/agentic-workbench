@@ -30,6 +30,25 @@ import {
   readWorktreeTextFile,
 } from "@/entities/worktree-file/api/worktree-file-repository";
 import type { WorktreeFileEntry } from "@/entities/worktree-file/model/types";
+import { worktreeGitQueryKeys } from "@/entities/worktree-git/api/query-keys";
+import {
+  getWorktreeCommitDetail,
+  getWorktreeCommitFileDiff,
+  getWorktreeGitGraph,
+  listWorktreeGitHistory,
+} from "@/entities/worktree-git/api/worktree-git-repository";
+import type {
+  GitCommitGraph,
+  GitCommitSummary,
+  GitGraphCommit,
+  GitGraphRef,
+} from "@/entities/worktree-git/model/types";
+import {
+  computeGitGraphRows,
+  getMaxGraphLane,
+  type GitGraphRow,
+  type GitGraphSegment,
+} from "@/features/worktree-workspace/model/git-graph-layout";
 import { cn } from "@/lib/utils";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
 
@@ -133,6 +152,51 @@ function GitWorkspaceTab({
   historyView: GitHistoryView;
   onHistoryViewChange: (view: GitHistoryView) => void;
 }) {
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
+  const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
+  const historyQuery = useQuery({
+    queryKey: worktreeGitQueryKeys.history(worktree.path),
+    queryFn: () => listWorktreeGitHistory(worktree.path),
+  });
+  const graphQuery = useQuery({
+    queryKey: worktreeGitQueryKeys.graph(worktree.path),
+    queryFn: () => getWorktreeGitGraph(worktree.path),
+  });
+  const commitDetailQuery = useQuery({
+    enabled: selectedCommitHash !== null,
+    queryKey: selectedCommitHash
+      ? worktreeGitQueryKeys.commitDetail(worktree.path, selectedCommitHash)
+      : worktreeGitQueryKeys.commitDetail(worktree.path, ""),
+    queryFn: () => getWorktreeCommitDetail(worktree.path, selectedCommitHash ?? ""),
+  });
+  const fileDiffQuery = useQuery({
+    enabled: selectedCommitHash !== null && selectedDiffPath !== null,
+    queryKey:
+      selectedCommitHash && selectedDiffPath
+        ? worktreeGitQueryKeys.fileDiff(worktree.path, selectedCommitHash, selectedDiffPath)
+        : worktreeGitQueryKeys.fileDiff(worktree.path, "", ""),
+    queryFn: () =>
+      getWorktreeCommitFileDiff(
+        worktree.path,
+        selectedCommitHash ?? "",
+        selectedDiffPath ?? "",
+      ),
+  });
+  const graphRows = useMemo(
+    () => computeGitGraphRows(graphQuery.data?.commits ?? []),
+    [graphQuery.data?.commits],
+  );
+  const maxGraphLane = useMemo(() => getMaxGraphLane(graphRows), [graphRows]);
+  const graphRefs = useMemo(
+    () => refsByTarget(graphQuery.data?.refs ?? []),
+    [graphQuery.data?.refs],
+  );
+
+  function selectCommit(commitHash: string) {
+    setSelectedCommitHash(commitHash);
+    setSelectedDiffPath(null);
+  }
+
   return (
     <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0">
       <ResizablePanel id="git-workspace-nav" defaultSize="42%" minSize="280px">
@@ -177,10 +241,46 @@ function GitWorkspaceTab({
               </div>
             </header>
             <div className="min-h-0 flex-1 overflow-auto p-4">
-              <EmptyPanel
-                title={historyView === "graph" ? "Git graph 연결 예정" : "Commit list 연결 예정"}
-                description="git-explorer의 history graph/list 컴포넌트를 분리한 뒤 이 영역에 통합합니다."
-              />
+              {historyView === "graph" ? (
+                graphQuery.isLoading ? (
+                  <InlineState icon={Loader2Icon} title="Git graph를 불러오는 중입니다." spinning />
+                ) : graphQuery.isError ? (
+                  <InlineState
+                    icon={AlertCircleIcon}
+                    title="Git graph를 불러오지 못했습니다."
+                    description={String(graphQuery.error)}
+                    variant="destructive"
+                  />
+                ) : graphQuery.data && graphQuery.data.commits.length > 0 ? (
+                  <HistoryGraphView
+                    graph={graphQuery.data}
+                    graphRefs={graphRefs}
+                    graphRows={graphRows}
+                    maxGraphLane={maxGraphLane}
+                    selectedCommitHash={selectedCommitHash}
+                    onSelectCommit={selectCommit}
+                  />
+                ) : (
+                  <EmptyPanel title="Commit 없음" description="표시할 Git commit이 없습니다." />
+                )
+              ) : historyQuery.isLoading ? (
+                <InlineState icon={Loader2Icon} title="Commit list를 불러오는 중입니다." spinning />
+              ) : historyQuery.isError ? (
+                <InlineState
+                  icon={AlertCircleIcon}
+                  title="Commit list를 불러오지 못했습니다."
+                  description={String(historyQuery.error)}
+                  variant="destructive"
+                />
+              ) : historyQuery.data && historyQuery.data.commits.length > 0 ? (
+                <CommitListView
+                  commits={historyQuery.data.commits}
+                  selectedCommitHash={selectedCommitHash}
+                  onSelectCommit={selectCommit}
+                />
+              ) : (
+                <EmptyPanel title="Commit 없음" description="표시할 Git commit이 없습니다." />
+              )}
             </div>
           </section>
         </div>
@@ -207,14 +307,246 @@ function GitWorkspaceTab({
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-auto p-4">
-            <EmptyPanel
-              title="선택된 commit 없음"
-              description="왼쪽 graph 또는 commit list에서 commit을 선택하면 상세 정보를 표시합니다."
-            />
+            {selectedCommitHash === null ? (
+              <EmptyPanel
+                title="선택된 commit 없음"
+                description="왼쪽 graph 또는 commit list에서 commit을 선택하면 상세 정보를 표시합니다."
+              />
+            ) : commitDetailQuery.isLoading ? (
+              <InlineState icon={Loader2Icon} title="Commit detail을 불러오는 중입니다." spinning />
+            ) : commitDetailQuery.isError ? (
+              <InlineState
+                icon={AlertCircleIcon}
+                title="Commit detail을 불러오지 못했습니다."
+                description={String(commitDetailQuery.error)}
+                variant="destructive"
+              />
+            ) : commitDetailQuery.data ? (
+              <div className="grid gap-4">
+                <div className="grid gap-1">
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {commitDetailQuery.data.hash}
+                  </p>
+                  <h3 className="break-words text-sm font-medium">
+                    {commitDetailQuery.data.message}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {commitDetailQuery.data.author} · {formatDate(commitDetailQuery.data.date)}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <h3 className="text-sm font-medium">Changed files</h3>
+                  <div className="overflow-hidden rounded-md border text-sm">
+                    {commitDetailQuery.data.files.length === 0 ? (
+                      <p className="p-3 text-sm text-muted-foreground">No changed files.</p>
+                    ) : (
+                      commitDetailQuery.data.files.map((file) => (
+                        <button
+                          key={`${file.status}:${file.path}`}
+                          type="button"
+                          className="flex h-8 w-full min-w-0 items-center gap-2 border-b px-2 text-left last:border-b-0 hover:bg-muted data-[selected=true]:bg-muted"
+                          data-selected={selectedDiffPath === file.path}
+                          onClick={() => setSelectedDiffPath(file.path)}
+                        >
+                          <Badge variant="outline" className="w-10 justify-center font-mono">
+                            {file.status}
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                            {file.path}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                {selectedDiffPath ? (
+                  <div className="grid gap-2">
+                    <h3 className="text-sm font-medium">Diff</h3>
+                    {fileDiffQuery.isLoading ? (
+                      <InlineState icon={Loader2Icon} title="Diff를 불러오는 중입니다." spinning />
+                    ) : fileDiffQuery.isError ? (
+                      <InlineState
+                        icon={AlertCircleIcon}
+                        title="Diff를 불러오지 못했습니다."
+                        description={String(fileDiffQuery.error)}
+                        variant="destructive"
+                      />
+                    ) : fileDiffQuery.data ? (
+                      <pre className="max-h-[44svh] overflow-auto rounded-md border bg-muted/20 p-3 text-xs leading-5">
+                        <code>{fileDiffQuery.data.content}</code>
+                      </pre>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>
+  );
+}
+
+function HistoryGraphView({
+  graph,
+  graphRefs,
+  graphRows,
+  maxGraphLane,
+  selectedCommitHash,
+  onSelectCommit,
+}: {
+  graph: GitCommitGraph;
+  graphRefs: Map<string, GitGraphRef[]>;
+  graphRows: Map<string, GitGraphRow>;
+  maxGraphLane: number;
+  selectedCommitHash: string | null;
+  onSelectCommit: (commitHash: string) => void;
+}) {
+  const rowHeight = graph.layoutHints.rowHeight || 32;
+
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] border-b bg-muted/40 px-2 py-2 text-xs font-medium text-muted-foreground">
+        <span>Graph</span>
+        <span>Commit</span>
+      </div>
+      {graph.commits.map((commit) => (
+        <HistoryGraphRow
+          key={commit.hash}
+          commit={commit}
+          graphRefs={graphRefs.get(commit.hash) ?? []}
+          graphRow={graphRows.get(commit.hash)}
+          isSelected={commit.hash === selectedCommitHash}
+          maxGraphLane={maxGraphLane}
+          rowHeight={rowHeight}
+          onSelectCommit={onSelectCommit}
+        />
+      ))}
+      <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+        {graph.commits.length} / {graph.page.totalCount} commits loaded
+      </div>
+    </div>
+  );
+}
+
+function HistoryGraphRow({
+  commit,
+  graphRefs,
+  graphRow,
+  isSelected,
+  maxGraphLane,
+  rowHeight,
+  onSelectCommit,
+}: {
+  commit: GitGraphCommit;
+  graphRefs: GitGraphRef[];
+  graphRow?: GitGraphRow;
+  isSelected: boolean;
+  maxGraphLane: number;
+  rowHeight: number;
+  onSelectCommit: (commitHash: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Commit ${commit.shortHash}: ${commit.message}`}
+      className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center border-b px-2 text-left text-sm last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
+      data-selected={isSelected}
+      style={{ minHeight: rowHeight }}
+      onClick={() => onSelectCommit(commit.hash)}
+    >
+      <GraphCell maxLane={maxGraphLane} row={graphRow} rowHeight={rowHeight} />
+      <span className="flex min-w-0 items-center gap-2 pr-2">
+        <span className="font-mono text-xs text-muted-foreground">{commit.shortHash}</span>
+        {graphRefs.map((ref) => (
+          <span
+            key={`${ref.kind}:${ref.name}`}
+            className="max-w-28 truncate rounded-sm border bg-background px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+            title={ref.name}
+          >
+            {ref.kind === "tag" ? "tag:" : ""}
+            {ref.name}
+          </span>
+        ))}
+        <span className="min-w-0 truncate">{commit.message}</span>
+      </span>
+    </button>
+  );
+}
+
+function GraphCell({
+  maxLane,
+  row,
+  rowHeight,
+}: {
+  maxLane: number;
+  row?: GitGraphRow;
+  rowHeight: number;
+}) {
+  const width = 20 + (maxLane + 1) * 20;
+  const nodeX = row ? laneX(row.lane) : 10;
+  const centerY = rowHeight / 2;
+
+  return (
+    <svg aria-hidden className="block shrink-0" height={rowHeight} width={width}>
+      {row?.connections.map((segment, index) => (
+        <path
+          key={`${segment.type}:${segment.fromLane}:${segment.toLane}:${index}`}
+          d={graphSegmentPath(segment, rowHeight)}
+          fill="none"
+          stroke={segment.color}
+          strokeDasharray={segment.type.startsWith("merge") ? "4 3" : undefined}
+          strokeWidth="2"
+        />
+      ))}
+      {row ? (
+        row.nodeType === "head" ? (
+          <>
+            <circle cx={nodeX} cy={centerY} fill="none" r="6" stroke="currentColor" strokeWidth="2" />
+            <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
+          </>
+        ) : row.nodeType === "merge" ? (
+          <>
+            <circle cx={nodeX} cy={centerY} fill="none" r="5" stroke={row.color} strokeWidth="1.5" />
+            <circle cx={nodeX} cy={centerY} fill={row.color} r="3" />
+          </>
+        ) : (
+          <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
+        )
+      ) : null}
+    </svg>
+  );
+}
+
+function CommitListView({
+  commits,
+  selectedCommitHash,
+  onSelectCommit,
+}: {
+  commits: GitCommitSummary[];
+  selectedCommitHash: string | null;
+  onSelectCommit: (commitHash: string) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border text-sm">
+      {commits.map((commit) => (
+        <button
+          key={commit.hash}
+          type="button"
+          className="grid w-full grid-cols-[5rem_minmax(0,1fr)] gap-2 border-b px-3 py-2 text-left last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
+          data-selected={commit.hash === selectedCommitHash}
+          onClick={() => onSelectCommit(commit.hash)}
+        >
+          <span className="font-mono text-xs text-muted-foreground">{commit.hash.slice(0, 8)}</span>
+          <span className="min-w-0">
+            <span className="block truncate">{commit.message}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {commit.author} · {formatDate(commit.date)}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -568,4 +900,50 @@ function formatBytes(bytes: number) {
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** exponent;
   return `${value >= 10 || exponent === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent]}`;
+}
+
+function refsByTarget(refs: GitGraphRef[]) {
+  const result = new Map<string, GitGraphRef[]>();
+
+  for (const ref of refs) {
+    const existing = result.get(ref.target) ?? [];
+    existing.push(ref);
+    result.set(ref.target, existing);
+  }
+
+  return result;
+}
+
+function laneX(lane: number) {
+  return 10 + lane * 20;
+}
+
+function graphSegmentPath(segment: GitGraphSegment, rowHeight: number) {
+  const fromX = laneX(segment.fromLane);
+  const toX = laneX(segment.toLane);
+  const centerY = rowHeight / 2;
+
+  if (segment.type === "vertical") {
+    return `M ${fromX} 0 L ${toX} ${rowHeight}`;
+  }
+
+  if (segment.type === "vertical-top") {
+    return `M ${fromX} 0 L ${fromX} ${centerY}`;
+  }
+
+  if (segment.type === "vertical-bottom") {
+    return `M ${fromX} ${centerY} L ${fromX} ${rowHeight}`;
+  }
+
+  return `M ${fromX} ${centerY} C ${fromX} ${rowHeight}, ${toX} ${rowHeight}, ${toX} ${rowHeight}`;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
 }
