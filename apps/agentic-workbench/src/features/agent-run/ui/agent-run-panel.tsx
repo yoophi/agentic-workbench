@@ -252,7 +252,6 @@ export function AgentRunPanel({
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isRunSettingsDialogOpen, setIsRunSettingsDialogOpen] = useState(false);
-  const [isRunInfoPopoverOpen, setIsRunInfoPopoverOpen] = useState(false);
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
   const [isRalphSettingsDialogOpen, setIsRalphSettingsDialogOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
@@ -267,7 +266,6 @@ export function AgentRunPanel({
   const usageContextRef = useRef<UsageContext | null>(null);
   const goalContinuationPendingRef = useRef(false);
   const settingsHydratedRef = useRef(false);
-  const runInfoCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
 
   const agentsQuery = useQuery({
@@ -666,22 +664,6 @@ export function AgentRunPanel({
   const selectedContextSizeOption = contextSizeOptions.find(
     (option) => option.value === contextSize,
   );
-  const openRunInfoPopover = useCallback(() => {
-    if (runInfoCloseTimeoutRef.current) {
-      clearTimeout(runInfoCloseTimeoutRef.current);
-      runInfoCloseTimeoutRef.current = null;
-    }
-    setIsRunInfoPopoverOpen(true);
-  }, []);
-  const closeRunInfoPopover = useCallback(() => {
-    if (runInfoCloseTimeoutRef.current) {
-      clearTimeout(runInfoCloseTimeoutRef.current);
-    }
-    runInfoCloseTimeoutRef.current = setTimeout(() => {
-      setIsRunInfoPopoverOpen(false);
-      runInfoCloseTimeoutRef.current = null;
-    }, 120);
-  }, []);
   const visibleItems = useMemo(
     () => (filter === "all" ? items : items.filter((item) => item.group === filter)),
     [filter, items],
@@ -1028,7 +1010,7 @@ export function AgentRunPanel({
             <div className="flex flex-col">
           {scrollHeader}
 
-          <div className="m-3 flex flex-col gap-4">
+          <div className="m-4 flex flex-col gap-4">
             {!isRunning && (
               <div>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1037,13 +1019,9 @@ export function AgentRunPanel({
                       <BotIcon />
                       Agentic coding
                     </h2>
-                    <p className="text-sm text-muted-foreground">
-                      선택한 worktree를 작업 디렉토리로 사용해 ACP agent를 실행합니다.
-                    </p>
                   </div>
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-sm font-medium">Agent</span>
                       <Select
                         value={selectedAgentId}
                         onValueChange={setSelectedAgentId}
@@ -1064,8 +1042,7 @@ export function AgentRunPanel({
                       </Select>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-sm font-medium">세션</span>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Button
                           type="button"
                           size="sm"
@@ -1082,41 +1059,41 @@ export function AgentRunPanel({
                         >
                           기존 세션 재사용
                         </Button>
+                        {sessionMode === "reuse" && (
+                          <Select
+                            value={selectedSessionId}
+                            onValueChange={setSelectedSessionId}
+                            disabled={
+                              sessionsQuery.isLoading ||
+                              sessionsQuery.isError ||
+                              sessions.length === 0
+                            }
+                          >
+                            <SelectTrigger className="w-56">
+                              <SelectValue
+                                placeholder={
+                                  sessionsQuery.isLoading
+                                    ? "세션 불러오는 중…"
+                                    : sessionsQuery.isError
+                                      ? "세션을 불러오지 못함"
+                                      : sessions.length === 0
+                                        ? "재사용 가능한 세션 없음"
+                                        : "재개할 세션 선택"
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                {sessions.map((session) => (
+                                  <SelectItem key={session.id} value={session.id}>
+                                    {formatSessionLabel(session)}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
-                      {sessionMode === "reuse" && (
-                        <Select
-                          value={selectedSessionId}
-                          onValueChange={setSelectedSessionId}
-                          disabled={
-                            sessionsQuery.isLoading ||
-                            sessionsQuery.isError ||
-                            sessions.length === 0
-                          }
-                        >
-                          <SelectTrigger className="w-full sm:w-56">
-                            <SelectValue
-                              placeholder={
-                                sessionsQuery.isLoading
-                                  ? "세션 불러오는 중…"
-                                  : sessionsQuery.isError
-                                    ? "세션을 불러오지 못함"
-                                    : sessions.length === 0
-                                      ? "재사용 가능한 세션 없음"
-                                      : "재개할 세션 선택"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {sessions.map((session) => (
-                                <SelectItem key={session.id} value={session.id}>
-                                  {formatSessionLabel(session)}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      )}
                       {sessionMode === "reuse" &&
                         !sessionsQuery.isLoading &&
                         (sessionsQuery.isError ? (
@@ -1210,7 +1187,7 @@ export function AgentRunPanel({
           isLoading={isRunning}
           className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none"
         >
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
             <div className="flex gap-1.5" role="tablist" aria-label="Agent input mode">
               <Button
                 type="button"
@@ -1253,7 +1230,7 @@ export function AgentRunPanel({
           </div>
           {inputMode === "ralphLoop" && (
             <div
-              className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-2"
+              className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2"
               role="tabpanel"
               onClick={(event) => event.stopPropagation()}
             >
@@ -1288,11 +1265,11 @@ export function AgentRunPanel({
                   ? "Ralph loop로 반복 실행할 초기 작업을 입력하세요."
                   : "선택한 worktree에서 실행할 작업을 입력하세요."
               }
-              className="h-full min-h-0 resize-none overflow-auto"
+              className="h-full min-h-0 resize-none overflow-auto px-4"
             />
           </div>
           {inputMode === "prompt" && queuedPrompts.length > 0 && (
-            <div className="flex max-h-36 shrink-0 flex-col gap-2 px-2 pb-2">
+            <div className="flex max-h-36 shrink-0 flex-col gap-2 px-4 pb-2">
               <div className="text-xs text-muted-foreground">대기 중인 prompt {queuedPrompts.length}개</div>
               <div className="flex min-h-0 flex-col gap-2 overflow-auto pr-1">
                 {queuedPrompts.map((queuedPrompt, index) => (
@@ -1378,7 +1355,7 @@ export function AgentRunPanel({
               </div>
             </div>
           )}
-          <div className="flex shrink-0 flex-col gap-3 px-2 pb-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex shrink-0 flex-col gap-3 px-4 pb-1 sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="button"
               size="sm"
@@ -1389,7 +1366,7 @@ export function AgentRunPanel({
               Settings
             </Button>
             <PromptInputActions className="justify-end">
-              <Popover open={isRunInfoPopoverOpen} onOpenChange={setIsRunInfoPopoverOpen}>
+              <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
@@ -1397,10 +1374,6 @@ export function AgentRunPanel({
                     size="icon"
                     className="size-8"
                     aria-label="Run 설정 정보"
-                    onMouseEnter={openRunInfoPopover}
-                    onMouseLeave={closeRunInfoPopover}
-                    onFocus={openRunInfoPopover}
-                    onBlur={closeRunInfoPopover}
                   >
                     <InfoIcon className="size-4" />
                   </Button>
@@ -1408,8 +1381,6 @@ export function AgentRunPanel({
                 <PopoverContent
                   align="end"
                   className="w-72"
-                  onMouseEnter={openRunInfoPopover}
-                  onMouseLeave={closeRunInfoPopover}
                 >
                   <div className="flex flex-col gap-3 text-sm">
                     {isChangingPermissionMode ? (
