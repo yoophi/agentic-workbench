@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import {
   createSavedPrompt,
@@ -29,6 +29,11 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { PromptSuggestion } from "@/components/ui/prompt-suggestion";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -131,21 +136,8 @@ export function SavedPromptToolbar({
 
   return (
     <div className="flex flex-col gap-2 border-b px-2 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          저장 프롬프트
-        </span>
-        <Button type="button" size="sm" variant="outline" onClick={openCreateDialog}>
-          <PlusIcon data-icon="inline-start" />
-          추가
-        </Button>
-      </div>
-      {savedPromptsQuery.error && (
-        <p className="text-xs text-destructive">{String(savedPromptsQuery.error)}</p>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {savedPrompts.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {savedPrompts.map((savedPrompt) => (
             <div
               key={savedPrompt.id}
@@ -160,29 +152,59 @@ export function SavedPromptToolbar({
               >
                 <span className="truncate">{savedPrompt.label}</span>
               </PromptSuggestion>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => openEditDialog(savedPrompt)}
-              >
-                <PencilIcon />
-                <span className="sr-only">수정</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                disabled={deleteMutation.isPending}
-                onClick={() => void handleDelete(savedPrompt.id)}
-              >
-                <Trash2Icon />
-                <span className="sr-only">삭제</span>
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`${savedPrompt.label} 작업`}
+                  >
+                    <MoreHorizontalIcon />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-32 p-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => openEditDialog(savedPrompt)}
+                  >
+                    <PencilIcon data-icon="inline-start" />
+                    수정
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-destructive hover:text-destructive"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => void handleDelete(savedPrompt.id)}
+                  >
+                    <Trash2Icon data-icon="inline-start" />
+                    삭제
+                  </Button>
+                </PopoverContent>
+              </Popover>
             </div>
           ))}
         </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={openCreateDialog}
+        >
+          <PlusIcon data-icon="inline-start" />
+          추가
+        </Button>
+      </div>
+      {savedPromptsQuery.error && (
+        <p className="text-xs text-destructive">{String(savedPromptsQuery.error)}</p>
       )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
       <Dialog open={dialogMode !== null} onOpenChange={(open) => !open && setDialogMode(null)}>
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={handleSubmit} className="contents">

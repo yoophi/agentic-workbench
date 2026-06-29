@@ -1,12 +1,18 @@
-import type { PointerEventHandler, ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Group as ResizablePanelGroup,
+  Panel as ResizablePanel,
+  Separator as ResizableHandle,
+} from "react-resizable-panels";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   BotIcon,
   CheckCircleIcon,
   ClockIcon,
+  InfoIcon,
   Loader2Icon,
   PencilIcon,
   PlayIcon,
@@ -72,16 +78,8 @@ import {
 import type { QueuedPrompt, UsageContext } from "@/features/agent-run/model/run-panel-state";
 import { formatSessionLabel } from "@/features/agent-run/model/session-label";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
-import { WorktreeChangesPanel } from "@/features/worktree-changes/ui/worktree-changes-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
   Dialog,
@@ -100,6 +98,7 @@ import {
   PromptInputActions,
   PromptInputTextarea,
 } from "@/components/ui/prompt-input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -130,9 +129,6 @@ const RALPH_MAX_ITERATIONS = 100;
 const RALPH_DEFAULT_PROMPT =
   "이전 결과를 바탕으로 목표를 계속 진행하세요. 목표를 모두 달성했다면 더 진행하지 말고 완료를 알려주세요.";
 const GOAL_CONTINUATION_DELAY_MS = 800;
-const PROMPT_PANEL_DEFAULT_HEIGHT = 300;
-const PROMPT_PANEL_MIN_HEIGHT = 180;
-const PROMPT_PANEL_MAX_HEIGHT = 560;
 const TIMELINE_ESTIMATED_ITEM_HEIGHT = 96;
 const TIMELINE_ITEM_GAP = 12;
 const TIMELINE_OVERSCAN = 6;
@@ -255,13 +251,15 @@ export function AgentRunPanel({
   const [filter, setFilter] = useState<EventGroup | "all">("all");
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isRunSettingsDialogOpen, setIsRunSettingsDialogOpen] = useState(false);
+  const [isRunInfoPopoverOpen, setIsRunInfoPopoverOpen] = useState(false);
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
+  const [isRalphSettingsDialogOpen, setIsRalphSettingsDialogOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
   const [goalTokenBudget, setGoalTokenBudget] = useState("");
   const [editingPrompt, setEditingPrompt] = useState<QueuedPrompt | null>(null);
   const [editingPromptText, setEditingPromptText] = useState("");
   const [usageContext, setUsageContext] = useState<UsageContext | null>(null);
-  const [promptPanelHeight, setPromptPanelHeight] = useState(PROMPT_PANEL_DEFAULT_HEIGHT);
   const [inputMode, setInputMode] = useState<AgentInputMode>(initialInputMode);
   const activeRunIdRef = useRef<string | null>(null);
   const activeGoalRef = useRef<ThreadGoal | null>(null);
@@ -269,11 +267,8 @@ export function AgentRunPanel({
   const usageContextRef = useRef<UsageContext | null>(null);
   const goalContinuationPendingRef = useRef(false);
   const settingsHydratedRef = useRef(false);
-  const promptResizeRef = useRef<{
-    pointerId: number;
-    startY: number;
-    startHeight: number;
-  } | null>(null);
+  const runInfoCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
 
   const agentsQuery = useQuery({
     queryKey: agentRunQueryKeys.agents,
@@ -415,6 +410,11 @@ export function AgentRunPanel({
     }
     setInputMode(nextMode);
     setRalphLoopEnabled(nextMode === "ralphLoop");
+    if (nextMode === "ralphLoop") {
+      setIsRalphSettingsDialogOpen(true);
+    } else {
+      setIsRalphSettingsDialogOpen(false);
+    }
   }
 
   useEffect(() => {
@@ -659,6 +659,29 @@ export function AgentRunPanel({
       setContextSize(defaultContextSizeOption.value);
     }
   }, [contextSize, contextSizeOptions, modelId, modelOptions]);
+  const selectedPermissionModeOption = permissionModeOptions.find(
+    (option) => option.value === permissionMode,
+  );
+  const selectedModelOption = modelOptions.find((option) => option.value === modelId);
+  const selectedContextSizeOption = contextSizeOptions.find(
+    (option) => option.value === contextSize,
+  );
+  const openRunInfoPopover = useCallback(() => {
+    if (runInfoCloseTimeoutRef.current) {
+      clearTimeout(runInfoCloseTimeoutRef.current);
+      runInfoCloseTimeoutRef.current = null;
+    }
+    setIsRunInfoPopoverOpen(true);
+  }, []);
+  const closeRunInfoPopover = useCallback(() => {
+    if (runInfoCloseTimeoutRef.current) {
+      clearTimeout(runInfoCloseTimeoutRef.current);
+    }
+    runInfoCloseTimeoutRef.current = setTimeout(() => {
+      setIsRunInfoPopoverOpen(false);
+      runInfoCloseTimeoutRef.current = null;
+    }, 120);
+  }, []);
   const visibleItems = useMemo(
     () => (filter === "all" ? items : items.filter((item) => item.group === filter)),
     [filter, items],
@@ -994,183 +1017,128 @@ export function AgentRunPanel({
     }
   }
 
-  const startPromptResize: PointerEventHandler<HTMLDivElement> = (event) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    promptResizeRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: promptPanelHeight,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    document.body.style.cursor = "ns-resize";
-    document.body.style.userSelect = "none";
-  };
-
-  const resizePromptPanel: PointerEventHandler<HTMLDivElement> = (event) => {
-    const resizeState = promptResizeRef.current;
-    if (!resizeState || resizeState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const nextHeight = resizeState.startHeight + resizeState.startY - event.clientY;
-    setPromptPanelHeight(clampPromptPanelHeight(nextHeight));
-  };
-
-  const stopPromptResize: PointerEventHandler<HTMLDivElement> = (event) => {
-    const resizeState = promptResizeRef.current;
-    if (!resizeState || resizeState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    promptResizeRef.current = null;
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
-        <div className="flex flex-col gap-4">
+    <div className="h-full min-h-0">
+      <ResizablePanelGroup
+        orientation="vertical"
+        className="flex h-full min-h-0 w-full flex-col"
+      >
+        <ResizablePanel id="agent-run-timeline" minSize="220px">
+          <div ref={timelineScrollRef} className="h-full min-h-0 overflow-auto">
+            <div className="flex flex-col">
           {scrollHeader}
 
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex flex-col gap-1.5">
-                  <CardTitle className="flex items-center gap-2">
-                    <BotIcon />
-                    Agentic coding
-                  </CardTitle>
-                  <CardDescription>
-                    선택한 worktree를 작업 디렉토리로 사용해 ACP agent를 실행합니다.
-                  </CardDescription>
-                </div>
-                <div className="flex flex-col gap-3">
+          <div className="m-3 flex flex-col gap-4">
+            {!isRunning && (
+              <div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium">Agent</span>
-                    <Select
-                      value={selectedAgentId}
-                      onValueChange={setSelectedAgentId}
-                      disabled={isRunning || agentsQuery.isLoading}
-                    >
-                      <SelectTrigger className="w-full sm:w-56">
-                        <SelectValue placeholder="Agent 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {agents.map((agent) => (
-                            <SelectItem key={agent.id} value={agent.id}>
-                              {agent.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                      <BotIcon />
+                      Agentic coding
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      선택한 worktree를 작업 디렉토리로 사용해 ACP agent를 실행합니다.
+                    </p>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-sm font-medium">세션</span>
-                    <div className="flex gap-1.5">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={sessionMode === "new" ? "default" : "outline"}
-                        disabled={isRunning}
-                        onClick={() => setSessionMode("new")}
-                      >
-                        새 세션
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={sessionMode === "reuse" ? "default" : "outline"}
-                        disabled={isRunning}
-                        onClick={() => setSessionMode("reuse")}
-                      >
-                        기존 세션 재사용
-                      </Button>
-                    </div>
-                    {sessionMode === "reuse" && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium">Agent</span>
                       <Select
-                        value={selectedSessionId}
-                        onValueChange={setSelectedSessionId}
-                        disabled={
-                          isRunning ||
-                          sessionsQuery.isLoading ||
-                          sessionsQuery.isError ||
-                          sessions.length === 0
-                        }
+                        value={selectedAgentId}
+                        onValueChange={setSelectedAgentId}
+                        disabled={agentsQuery.isLoading}
                       >
                         <SelectTrigger className="w-full sm:w-56">
-                          <SelectValue
-                            placeholder={
-                              sessionsQuery.isLoading
-                                ? "세션 불러오는 중…"
-                                : sessionsQuery.isError
-                                  ? "세션을 불러오지 못함"
-                                  : sessions.length === 0
-                                    ? "재사용 가능한 세션 없음"
-                                    : "재개할 세션 선택"
-                            }
-                          />
+                          <SelectValue placeholder="Agent 선택" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {sessions.map((session) => (
-                              <SelectItem key={session.id} value={session.id}>
-                                {formatSessionLabel(session)}
+                            {agents.map((agent) => (
+                              <SelectItem key={agent.id} value={agent.id}>
+                                {agent.label}
                               </SelectItem>
                             ))}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                    )}
-                    {sessionMode === "reuse" &&
-                      !sessionsQuery.isLoading &&
-                      (sessionsQuery.isError ? (
-                        <span className="text-xs text-destructive">
-                          세션 목록을 불러오지 못했습니다: {String(sessionsQuery.error)}
-                        </span>
-                      ) : sessions.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">
-                          이 worktree에서 해당 agent의 기존 세션을 찾지 못했습니다.
-                        </span>
-                      ) : null)}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium">세션</span>
+                      <div className="flex gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={sessionMode === "new" ? "default" : "outline"}
+                          onClick={() => setSessionMode("new")}
+                        >
+                          새 세션
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={sessionMode === "reuse" ? "default" : "outline"}
+                          onClick={() => setSessionMode("reuse")}
+                        >
+                          기존 세션 재사용
+                        </Button>
+                      </div>
+                      {sessionMode === "reuse" && (
+                        <Select
+                          value={selectedSessionId}
+                          onValueChange={setSelectedSessionId}
+                          disabled={
+                            sessionsQuery.isLoading ||
+                            sessionsQuery.isError ||
+                            sessions.length === 0
+                          }
+                        >
+                          <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue
+                              placeholder={
+                                sessionsQuery.isLoading
+                                  ? "세션 불러오는 중…"
+                                  : sessionsQuery.isError
+                                    ? "세션을 불러오지 못함"
+                                    : sessions.length === 0
+                                      ? "재사용 가능한 세션 없음"
+                                      : "재개할 세션 선택"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {sessions.map((session) => (
+                                <SelectItem key={session.id} value={session.id}>
+                                  {formatSessionLabel(session)}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {sessionMode === "reuse" &&
+                        !sessionsQuery.isLoading &&
+                        (sessionsQuery.isError ? (
+                          <span className="text-xs text-destructive">
+                            세션 목록을 불러오지 못했습니다: {String(sessionsQuery.error)}
+                          </span>
+                        ) : sessions.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">
+                            이 worktree에서 해당 agent의 기존 세션을 찾지 못했습니다.
+                          </span>
+                        ) : null)}
+                    </div>
                   </div>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={isRunning ? "default" : "secondary"}>
-                    {isRunning ? "Running" : "Idle"}
-                  </Badge>
-                  <EllipsisPopoverText
-                    value={`cwd=${workingDirectory}`}
-                    className="max-w-full font-mono text-xs text-muted-foreground"
-                    contentClassName="font-mono text-xs"
-                  />
-                </div>
-                {selectedAgent && (
-                  <EllipsisPopoverText
-                    value={`command=${selectedAgent.command}`}
-                    className="font-mono text-xs text-muted-foreground"
-                    contentClassName="font-mono text-xs"
-                  />
-                )}
-                {error && (
-                  <SystemMessage variant="error" fill>
-                    {error}
-                  </SystemMessage>
-                )}
-              </div>
+            )}
+            <div className="flex flex-col gap-4">
+              {error && (
+                <SystemMessage variant="error" fill>
+                  {error}
+                </SystemMessage>
+              )}
 
               <GoalStatusPanel
                 goal={activeGoal}
@@ -1188,13 +1156,8 @@ export function AgentRunPanel({
                 onClear={() => void clearCurrentGoal()}
               />
 
-              <WorktreeChangesPanel
-                workingDirectory={workingDirectory}
-                isRunning={isRunning}
-              />
-
-              <div className="flex flex-col rounded-lg border bg-background">
-                <div className="flex flex-wrap gap-1.5 border-b p-3" role="tablist" aria-label="ACP event filter">
+              <div className="flex flex-col">
+                <div className="flex flex-wrap gap-1.5 border-b pb-3" role="tablist" aria-label="ACP event filter">
                   {eventGroups.map((group) => (
                     <Button
                       key={group.id}
@@ -1207,46 +1170,31 @@ export function AgentRunPanel({
                     </Button>
                   ))}
                 </div>
-                <VirtualizedRunTimeline items={visibleItems} />
+                <VirtualizedRunTimeline
+                  items={visibleItems}
+                  scrollParentRef={timelineScrollRef}
+                />
               </div>
-            </CardContent>
-          </Card>
 
-          <WorktreeChangesPanel workingDirectory={workingDirectory} isRunning={isRunning} />
-        </div>
-      </div>
-
-      {usageContext && (
-        <div className="shrink-0 rounded-lg border bg-background px-3 py-2">
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="font-medium text-muted-foreground">Context</span>
-            <span className="font-mono text-muted-foreground">
-              {usageContext.used}/{usageContext.size}
-              {usagePercent !== null ? ` (${usagePercent}%)` : ""}
-            </span>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width]"
-              style={{ width: `${usagePercent ?? 0}%` }}
-            />
+            </div>
           </div>
-        </div>
-      )}
+          </div>
+        </ResizablePanel>
 
-      <div className="relative shrink-0" style={{ height: promptPanelHeight }}>
-        <div
-          role="separator"
+        <ResizableHandle
           aria-label="프롬프트 영역 크기 조정"
-          aria-orientation="horizontal"
-          className="group absolute -top-2 left-0 right-0 z-10 flex h-4 cursor-ns-resize items-center justify-center touch-none"
-          onPointerDown={startPromptResize}
-          onPointerMove={resizePromptPanel}
-          onPointerUp={stopPromptResize}
-          onPointerCancel={stopPromptResize}
+          className="relative flex h-2 shrink-0 cursor-ns-resize items-center justify-center bg-transparent transition-colors after:absolute after:left-0 after:right-0 after:h-px after:bg-border hover:after:bg-muted-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
-          <div className="h-1 w-12 rounded-full bg-border transition-colors group-hover:bg-muted-foreground/60 group-active:bg-primary" />
-        </div>
+          <div className="relative z-10 h-1 w-12 rounded-full bg-border transition-colors" />
+        </ResizableHandle>
+
+        <ResizablePanel
+          id="agent-run-prompt"
+          defaultSize="300px"
+          minSize="180px"
+          maxSize="560px"
+        >
         <PromptInput
           value={prompt}
           onValueChange={setPrompt}
@@ -1260,177 +1208,70 @@ export function AgentRunPanel({
             }
           }}
           isLoading={isRunning}
-          className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg"
+          className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none"
         >
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Permission mode</span>
-            <Select
-              value={permissionMode}
-              onValueChange={(value) => void changePermissionMode(value as PermissionMode)}
-              disabled={isChangingPermissionMode}
-            >
-              <SelectTrigger className="h-8 w-52">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {permissionModeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-              {isChangingPermissionMode
-                ? "permission mode를 실행 중인 agent에 적용하는 중입니다..."
-                : isRunning
-                  ? "실행 중에 변경하면 이후 승인 요청부터 즉시 적용됩니다."
-                  : permissionModeOptions.find((option) => option.value === permissionMode)
-                      ?.description}
-            </span>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Model</span>
-            <Select
-              value={modelId}
-              onValueChange={setModelId}
-              disabled={isRunning}
-            >
-              <SelectTrigger className="h-8 w-52">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {modelOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <span className="text-xs font-medium text-muted-foreground">Context</span>
-            <Select
-              value={contextSize}
-              onValueChange={(value) => setContextSize(value as ContextSizePreset)}
-              disabled={isRunning}
-            >
-              <SelectTrigger className="h-8 w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {contextSizeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-              {modelOptions.find((option) => option.value === modelId)?.description}{" "}
-              {contextSizeOptions.find((option) => option.value === contextSize)?.description}
-            </span>
-          </div>
-          <div
-            className="flex shrink-0 gap-1.5 border-b px-2 py-2"
-            role="tablist"
-            aria-label="Agent input mode"
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant={inputMode === "prompt" ? "default" : "outline"}
-              role="tab"
-              aria-selected={inputMode === "prompt"}
-              disabled={isRunning}
-              onClick={() => changeInputMode("prompt")}
-            >
-              Prompt
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={inputMode === "ralphLoop" ? "default" : "outline"}
-              role="tab"
-              aria-selected={inputMode === "ralphLoop"}
-              disabled={isRunning}
-              onClick={() => changeInputMode("ralphLoop")}
-            >
-              Ralph loop
-            </Button>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-2">
+            <div className="flex gap-1.5" role="tablist" aria-label="Agent input mode">
+              <Button
+                type="button"
+                size="sm"
+                variant={inputMode === "prompt" ? "default" : "outline"}
+                role="tab"
+                aria-selected={inputMode === "prompt"}
+                disabled={isRunning}
+                onClick={() => changeInputMode("prompt")}
+              >
+                Prompt
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={inputMode === "ralphLoop" ? "default" : "outline"}
+                role="tab"
+                aria-selected={inputMode === "ralphLoop"}
+                disabled={isRunning}
+                onClick={() => changeInputMode("ralphLoop")}
+              >
+                Ralph loop
+              </Button>
+            </div>
+            {usageContext && (
+              <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-medium">Context</span>
+                <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted sm:w-28">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${usagePercent ?? 0}%` }}
+                  />
+                </div>
+                <span className="shrink-0 font-mono">
+                  {usageContext.used}/{usageContext.size}
+                  {usagePercent !== null ? ` (${usagePercent}%)` : ""}
+                </span>
+              </div>
+            )}
           </div>
           {inputMode === "ralphLoop" && (
             <div
-              className="flex shrink-0 flex-col gap-2 border-b px-2 py-2"
+              className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2 py-2"
               role="tabpanel"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  반복 횟수
-                  <Input
-                    type="number"
-                    min={1}
-                    max={RALPH_MAX_ITERATIONS}
-                    value={ralphMaxIterations}
-                    disabled={isRunning}
-                    className="h-8 w-20"
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      if (Number.isFinite(next)) {
-                        setRalphMaxIterations(
-                          Math.min(RALPH_MAX_ITERATIONS, Math.max(1, Math.round(next))),
-                        );
-                      }
-                    }}
-                  />
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  반복 간 지연(초)
-                  <Input
-                    type="number"
-                    min={0}
-                    value={ralphDelaySeconds}
-                    disabled={isRunning}
-                    className="h-8 w-20"
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      if (Number.isFinite(next)) {
-                        setRalphDelaySeconds(Math.max(0, next));
-                      }
-                    }}
-                  />
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={ralphStopOnError ? "default" : "outline"}
-                  disabled={isRunning}
-                  onClick={() => setRalphStopOnError((value) => !value)}
-                >
-                  오류 시 중단: {ralphStopOnError ? "On" : "Off"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={ralphStopOnPermission ? "default" : "outline"}
-                  disabled={isRunning}
-                  onClick={() => setRalphStopOnPermission((value) => !value)}
-                >
-                  권한 요청 시 중단: {ralphStopOnPermission ? "On" : "Off"}
-                </Button>
-              </div>
-              <Textarea
-                value={ralphPromptTemplate}
+              <span className="min-w-0 text-xs text-muted-foreground">
+                최대 {ralphMaxIterations}회 반복, {ralphDelaySeconds}초 지연, 오류 시{" "}
+                {ralphStopOnError ? "중단" : "계속"}, 권한 요청 시{" "}
+                {ralphStopOnPermission ? "중단" : "계속"}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
                 disabled={isRunning}
-                placeholder="반복마다 agent에게 보낼 loop prompt"
-                className="min-h-16 text-sm"
-                onChange={(event) => setRalphPromptTemplate(event.target.value)}
-              />
+                onClick={() => setIsRalphSettingsDialogOpen(true)}
+              >
+                <SettingsIcon data-icon="inline-start" />
+                Settings
+              </Button>
             </div>
           )}
           {inputMode === "prompt" && (
@@ -1538,18 +1379,99 @@ export function AgentRunPanel({
             </div>
           )}
           <div className="flex shrink-0 flex-col gap-3 px-2 pb-1 sm:flex-row sm:items-center sm:justify-between">
-            <span className="min-w-0 text-xs text-muted-foreground">
-              {inputMode === "ralphLoop"
-                ? isRunning
-                  ? "Ralph loop 실행 중에는 입력 모드 전환과 설정 변경이 잠깁니다."
-                  : "Enter로 Ralph loop 실행, Shift+Enter로 줄바꿈"
-                : isRunning
-                  ? isAwaitingPromptResponse
-                    ? "Enter는 queue에 추가합니다. Steer는 현재 실행을 중단하고 새 지시로 재실행합니다."
-                    : "Enter는 queue에 추가합니다. Steer는 queue와 별도로 현재 실행을 재지시합니다."
-                  : "Enter로 실행, Shift+Enter로 줄바꿈"}
-            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIsRunSettingsDialogOpen(true)}
+            >
+              <SettingsIcon data-icon="inline-start" />
+              Settings
+            </Button>
             <PromptInputActions className="justify-end">
+              <Popover open={isRunInfoPopoverOpen} onOpenChange={setIsRunInfoPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    aria-label="Run 설정 정보"
+                    onMouseEnter={openRunInfoPopover}
+                    onMouseLeave={closeRunInfoPopover}
+                    onFocus={openRunInfoPopover}
+                    onBlur={closeRunInfoPopover}
+                  >
+                    <InfoIcon className="size-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-72"
+                  onMouseEnter={openRunInfoPopover}
+                  onMouseLeave={closeRunInfoPopover}
+                >
+                  <div className="flex flex-col gap-3 text-sm">
+                    {isChangingPermissionMode ? (
+                      <p className="text-xs text-muted-foreground">
+                        permission mode를 실행 중인 agent에 적용하는 중입니다...
+                      </p>
+                    ) : (
+                      <>
+                        <div className="grid gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Permission mode
+                          </span>
+                          <span>{selectedPermissionModeOption?.label ?? "Default"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {isRunning
+                              ? "실행 중에 변경하면 이후 승인 요청부터 즉시 적용됩니다."
+                              : selectedPermissionModeOption?.description}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">Model</span>
+                          <span>{selectedModelOption?.label ?? providerDefaultModelOption.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {selectedModelOption?.description}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">Context</span>
+                          <span>
+                            {selectedContextSizeOption?.label ?? defaultContextSizeOption.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {selectedContextSizeOption?.description}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">Status</span>
+                          <span>{isRunning ? "Running" : "Idle"}</span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Working directory
+                          </span>
+                          <span className="break-all font-mono text-xs text-muted-foreground">
+                            {workingDirectory}
+                          </span>
+                        </div>
+                        {selectedAgent && (
+                          <div className="grid gap-1">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Agent command
+                            </span>
+                            <span className="break-all font-mono text-xs text-muted-foreground">
+                              {selectedAgent.command}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
               {inputMode === "ralphLoop" ? (
                 isRunning ? (
                   <PromptInputAction tooltip="Cancel loop">
@@ -1621,7 +1543,8 @@ export function AgentRunPanel({
             </PromptInputActions>
           </div>
         </PromptInput>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       <Dialog
         open={Boolean(editingPrompt)}
@@ -1663,6 +1586,196 @@ export function AgentRunPanel({
             >
               저장
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isRunSettingsDialogOpen} onOpenChange={setIsRunSettingsDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Run 설정</DialogTitle>
+            <DialogDescription>
+              권한 모드, 모델, 컨텍스트 크기를 설정합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Permission mode
+              <Select
+                value={permissionMode}
+                onValueChange={(value) => void changePermissionMode(value as PermissionMode)}
+                disabled={isChangingPermissionMode}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {permissionModeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <span className="text-xs font-normal text-muted-foreground">
+                {isChangingPermissionMode
+                  ? "permission mode를 실행 중인 agent에 적용하는 중입니다..."
+                  : isRunning
+                    ? "실행 중에 변경하면 이후 승인 요청부터 즉시 적용됩니다."
+                    : selectedPermissionModeOption?.description}
+              </span>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm font-medium">
+                Model
+                <Select
+                  value={modelId}
+                  onValueChange={setModelId}
+                  disabled={isRunning}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {modelOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {isRunning
+                    ? "실행 중에는 모델을 변경할 수 없습니다."
+                    : selectedModelOption?.description}
+                </span>
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium">
+                Context
+                <Select
+                  value={contextSize}
+                  onValueChange={(value) => setContextSize(value as ContextSizePreset)}
+                  disabled={isRunning}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {contextSizeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {isRunning
+                    ? "실행 중에는 컨텍스트 크기를 변경할 수 없습니다."
+                    : selectedContextSizeOption?.description}
+                </span>
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button">완료</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isRalphSettingsDialogOpen}
+        onOpenChange={(open) => {
+          if (!isRunning) {
+            setIsRalphSettingsDialogOpen(open);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Ralph loop 설정</DialogTitle>
+            <DialogDescription>
+              반복 실행 횟수, 지연, 중단 조건과 반복 prompt를 설정합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm font-medium">
+                반복 횟수
+                <Input
+                  type="number"
+                  min={1}
+                  max={RALPH_MAX_ITERATIONS}
+                  value={ralphMaxIterations}
+                  disabled={isRunning}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (Number.isFinite(next)) {
+                      setRalphMaxIterations(
+                        Math.min(RALPH_MAX_ITERATIONS, Math.max(1, Math.round(next))),
+                      );
+                    }
+                  }}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium">
+                반복 간 지연(초)
+                <Input
+                  type="number"
+                  min={0}
+                  value={ralphDelaySeconds}
+                  disabled={isRunning}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (Number.isFinite(next)) {
+                      setRalphDelaySeconds(Math.max(0, next));
+                    }
+                  }}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={ralphStopOnError ? "default" : "outline"}
+                disabled={isRunning}
+                onClick={() => setRalphStopOnError((value) => !value)}
+              >
+                오류 시 중단: {ralphStopOnError ? "On" : "Off"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={ralphStopOnPermission ? "default" : "outline"}
+                disabled={isRunning}
+                onClick={() => setRalphStopOnPermission((value) => !value)}
+              >
+                권한 요청 시 중단: {ralphStopOnPermission ? "On" : "Off"}
+              </Button>
+            </div>
+            <label className="flex flex-col gap-2 text-sm font-medium">
+              Loop prompt
+              <Textarea
+                value={ralphPromptTemplate}
+                disabled={isRunning}
+                placeholder="반복마다 agent에게 보낼 loop prompt"
+                className="min-h-32 text-sm"
+                onChange={(event) => setRalphPromptTemplate(event.target.value)}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button">완료</Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1849,10 +1962,6 @@ function findPendingPermission(items: TimelineItem[]) {
   return pendingPermissions[pendingPermissions.length - 1] ?? null;
 }
 
-function clampPromptPanelHeight(height: number) {
-  return Math.min(PROMPT_PANEL_MAX_HEIGHT, Math.max(PROMPT_PANEL_MIN_HEIGHT, height));
-}
-
 function isModelOptionValue(value: string) {
   return value.trim().length > 0;
 }
@@ -1888,29 +1997,54 @@ function goalStatusLabel(status: GoalStatus) {
   return labels[status];
 }
 
-function VirtualizedRunTimeline({ items }: { items: TimelineItem[] }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+function VirtualizedRunTimeline({
+  items,
+  scrollParentRef,
+}: {
+  items: TimelineItem[];
+  scrollParentRef: RefObject<HTMLDivElement | null>;
+}) {
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) {
+    const scrollElement = scrollParentRef.current;
+    const timelineElement = timelineRef.current;
+    if (!scrollElement || !timelineElement) {
       return;
     }
 
-    const resizeObserver = new ResizeObserver(([entry]) => {
-      setViewportHeight(entry.contentRect.height);
-    });
+    const updateViewport = () => {
+      const scrollRect = scrollElement.getBoundingClientRect();
+      const timelineRect = timelineElement.getBoundingClientRect();
+      const visibleTop = Math.max(0, scrollRect.top - timelineRect.top);
+      const visibleBottom = Math.min(scrollRect.bottom, timelineRect.bottom);
+      const visibleHeight = Math.max(
+        0,
+        visibleBottom - Math.max(scrollRect.top, timelineRect.top),
+      );
+      const distanceFromBottom =
+        scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
+
+      stickToBottomRef.current = distanceFromBottom < 48;
+      setScrollTop(visibleTop);
+      setViewportHeight(visibleHeight);
+    };
+
+    const resizeObserver = new ResizeObserver(updateViewport);
     resizeObserver.observe(scrollElement);
-    setViewportHeight(scrollElement.clientHeight);
+    resizeObserver.observe(timelineElement);
+    scrollElement.addEventListener("scroll", updateViewport, { passive: true });
+    updateViewport();
 
     return () => {
       resizeObserver.disconnect();
+      scrollElement.removeEventListener("scroll", updateViewport);
     };
-  }, []);
+  }, [scrollParentRef]);
 
   const itemLayouts = useMemo(() => {
     let offset = 0;
@@ -1951,13 +2085,13 @@ function VirtualizedRunTimeline({ items }: { items: TimelineItem[] }) {
   }, [itemLayouts, scrollTop, viewportHeight]);
 
   useEffect(() => {
-    const scrollElement = scrollRef.current;
+    const scrollElement = scrollParentRef.current;
     if (!scrollElement || !stickToBottomRef.current) {
       return;
     }
 
     scrollElement.scrollTop = scrollElement.scrollHeight;
-  }, [items.length, totalHeight]);
+  }, [items.length, scrollParentRef, totalHeight]);
 
   const updateItemHeight = useCallback((itemId: string, height: number) => {
     setMeasuredHeights((current) => {
@@ -1970,17 +2104,10 @@ function VirtualizedRunTimeline({ items }: { items: TimelineItem[] }) {
 
   return (
     <div
-      ref={scrollRef}
-      className="max-h-[min(70svh,720px)] min-h-[320px] overflow-auto p-4"
+      ref={timelineRef}
+      className="min-h-[320px] py-4"
       role="log"
       aria-live="polite"
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        const distanceFromBottom =
-          element.scrollHeight - element.scrollTop - element.clientHeight;
-        stickToBottomRef.current = distanceFromBottom < 48;
-        setScrollTop(element.scrollTop);
-      }}
     >
       {items.length === 0 ? (
         <div className="grid min-h-[320px] place-items-center rounded-lg border border-dashed bg-muted/30 text-sm text-muted-foreground">

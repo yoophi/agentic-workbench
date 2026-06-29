@@ -136,14 +136,21 @@ export function App() {
     }
   }
 
-  const isSessionWindow = location.pathname.startsWith("/session/");
+  const isWorktreeSessionPage =
+    location.pathname.startsWith("/session/") ||
+    location.pathname.endsWith("/worktrees");
 
   return (
-    <main className="min-h-svh bg-muted/30 p-6">
+    <main
+      className={cn(
+        "min-h-svh bg-muted/30",
+        isWorktreeSessionPage ? "p-0" : "p-6",
+      )}
+    >
       <div
         className={cn(
-          "mx-auto flex w-full flex-col gap-6",
-          isSessionWindow ? "max-w-none" : "max-w-6xl",
+          "mx-auto flex w-full flex-col",
+          isWorktreeSessionPage ? "max-w-none gap-0" : "max-w-6xl gap-6",
         )}
       >
         {error && (
