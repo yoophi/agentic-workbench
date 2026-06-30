@@ -35,6 +35,9 @@ importers:
       '@yoophi/git-graph':
         specifier: workspace:*
         version: link:../../packages/git-graph
+      '@yoophi/git-ui':
+        specifier: workspace:*
+        version: link:../../packages/git-ui
       '@yoophi/markdown-annotation-core':
         specifier: workspace:*
         version: link:../../packages/markdown-annotation-core

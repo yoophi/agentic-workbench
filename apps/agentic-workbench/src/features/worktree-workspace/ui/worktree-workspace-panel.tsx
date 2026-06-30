@@ -47,16 +47,18 @@ import {
 import type {
   GitCommitGraph,
   GitCommitSummary,
-  GitGraphLayoutHints,
-  GitGraphCommit,
-  GitGraphRef,
 } from "@/entities/worktree-git/model/types";
 import {
   computeGitGraphRows,
   getMaxGraphLane,
-  type GitGraphRow,
-  type GitGraphSegment,
 } from "@/features/worktree-workspace/model/git-graph-layout";
+import {
+  CommitDetailView,
+  HistoryGraphView,
+  InfiniteLoadSentinel,
+  combineGitCommitGraphPages,
+  refsByTarget,
+} from "@yoophi/git-ui";
 import {
   formatAnnotationsForAgent,
   isFullBlockAnnotation,
@@ -286,7 +288,7 @@ function GitWorkspaceTab({
     [historyQuery.data?.pages],
   );
   const graphData = useMemo(
-    () => combineGitGraphPages(graphQuery.data?.pages ?? []),
+    () => combineGitCommitGraphPages(graphQuery.data?.pages ?? []),
     [graphQuery.data?.pages],
   );
   const graphRows = useMemo(() => computeGitGraphRows(graphData?.commits ?? []), [graphData]);
@@ -374,7 +376,7 @@ function GitWorkspaceTab({
                     graphRefs={graphRefs}
                     graphRows={graphRows}
                     maxGraphLane={maxGraphLane}
-                    selectedCommitHash={selectedCommitHash}
+                    selectedCommitHash={selectedCommitHash ?? undefined}
                     onSelectCommit={selectCommit}
                     hasNextPage={graphQuery.hasNextPage}
                     isFetchingNextPage={graphQuery.isFetchingNextPage}
@@ -446,211 +448,21 @@ function GitWorkspaceTab({
                 variant="destructive"
               />
             ) : commitDetailQuery.data ? (
-              <div className="grid gap-4">
-                <div className="grid gap-1">
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {commitDetailQuery.data.hash}
-                  </p>
-                  <h3 className="break-words text-sm font-medium">
-                    {commitDetailQuery.data.message}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {commitDetailQuery.data.author} · {formatDate(commitDetailQuery.data.date)}
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <h3 className="text-sm font-medium">Changed files</h3>
-                  <div className="overflow-hidden rounded-md border text-sm">
-                    {commitDetailQuery.data.files.length === 0 ? (
-                      <p className="p-3 text-sm text-muted-foreground">No changed files.</p>
-                    ) : (
-                      commitDetailQuery.data.files.map((file) => (
-                        <button
-                          key={`${file.status}:${file.path}`}
-                          type="button"
-                          className="flex h-8 w-full min-w-0 items-center gap-2 border-b px-2 text-left last:border-b-0 hover:bg-muted data-[selected=true]:bg-muted"
-                          data-selected={selectedDiffPath === file.path}
-                          onClick={() => setSelectedDiffPath(file.path)}
-                        >
-                          <Badge variant="outline" className="w-10 justify-center font-mono">
-                            {file.status}
-                          </Badge>
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                            {file.path}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-                {selectedDiffPath ? (
-                  <div className="grid gap-2">
-                    <h3 className="text-sm font-medium">Diff</h3>
-                    {fileDiffQuery.isLoading ? (
-                      <InlineState icon={Loader2Icon} title="Diff를 불러오는 중입니다." spinning />
-                    ) : fileDiffQuery.isError ? (
-                      <InlineState
-                        icon={AlertCircleIcon}
-                        title="Diff를 불러오지 못했습니다."
-                        description={String(fileDiffQuery.error)}
-                        variant="destructive"
-                      />
-                    ) : fileDiffQuery.data ? (
-                      <pre className="max-h-[44svh] overflow-auto rounded-md border bg-muted/20 p-3 text-xs leading-5">
-                        <code>{fileDiffQuery.data.content}</code>
-                      </pre>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              <CommitDetailView
+                commit={commitDetailQuery.data}
+                files={commitDetailQuery.data.files}
+                selectedFilePath={selectedDiffPath ?? undefined}
+                onSelectFile={setSelectedDiffPath}
+                diff={fileDiffQuery.data}
+                diffLoading={fileDiffQuery.isLoading}
+                diffError={fileDiffQuery.isError ? String(fileDiffQuery.error) : undefined}
+                diffClassName="max-h-[44svh]"
+              />
             ) : null}
           </div>
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>
-  );
-}
-
-function HistoryGraphView({
-  graph,
-  graphRefs,
-  graphRows,
-  maxGraphLane,
-  selectedCommitHash,
-  onSelectCommit,
-  hasNextPage,
-  isFetchingNextPage,
-  onLoadMore,
-}: {
-  graph: GitCommitGraph;
-  graphRefs: Map<string, GitGraphRef[]>;
-  graphRows: Map<string, GitGraphRow>;
-  maxGraphLane: number;
-  selectedCommitHash: string | null;
-  onSelectCommit: (commitHash: string) => void;
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  onLoadMore: () => void;
-}) {
-  const rowHeight = graph.layoutHints.rowHeight || 32;
-
-  return (
-    <div className="overflow-hidden rounded-md border">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] border-b bg-muted/40 px-2 py-2 text-xs font-medium text-muted-foreground">
-        <span>Graph</span>
-        <span>Commit</span>
-      </div>
-      {graph.commits.map((commit) => (
-        <HistoryGraphRow
-          key={commit.hash}
-          commit={commit}
-          graphRefs={graphRefs.get(commit.hash) ?? []}
-          graphRow={graphRows.get(commit.hash)}
-          isSelected={commit.hash === selectedCommitHash}
-          maxGraphLane={maxGraphLane}
-          rowHeight={rowHeight}
-          onSelectCommit={onSelectCommit}
-        />
-      ))}
-      <div className="border-t px-3 py-2 text-xs text-muted-foreground">
-        <InfiniteLoadSentinel
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-          onLoadMore={onLoadMore}
-        />
-        {graph.commits.length} / {graph.page.totalCount} commits loaded
-        {isFetchingNextPage ? " · loading older commits" : ""}
-      </div>
-    </div>
-  );
-}
-
-function HistoryGraphRow({
-  commit,
-  graphRefs,
-  graphRow,
-  isSelected,
-  maxGraphLane,
-  rowHeight,
-  onSelectCommit,
-}: {
-  commit: GitGraphCommit;
-  graphRefs: GitGraphRef[];
-  graphRow?: GitGraphRow;
-  isSelected: boolean;
-  maxGraphLane: number;
-  rowHeight: number;
-  onSelectCommit: (commitHash: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={`Commit ${commit.shortHash}: ${commit.message}`}
-      className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center border-b px-2 text-left text-sm last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
-      data-selected={isSelected}
-      style={{ minHeight: rowHeight }}
-      onClick={() => onSelectCommit(commit.hash)}
-    >
-      <GraphCell maxLane={maxGraphLane} row={graphRow} rowHeight={rowHeight} />
-      <span className="flex min-w-0 items-center gap-2 pr-2">
-        <span className="font-mono text-xs text-muted-foreground">{commit.shortHash}</span>
-        {graphRefs.map((ref) => (
-          <span
-            key={`${ref.kind}:${ref.name}`}
-            className="max-w-28 truncate rounded-sm border bg-background px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
-            title={ref.name}
-          >
-            {ref.kind === "tag" ? "tag:" : ""}
-            {ref.name}
-          </span>
-        ))}
-        <span className="min-w-0 truncate">{commit.message}</span>
-      </span>
-    </button>
-  );
-}
-
-function GraphCell({
-  maxLane,
-  row,
-  rowHeight,
-}: {
-  maxLane: number;
-  row?: GitGraphRow;
-  rowHeight: number;
-}) {
-  const width = 20 + (maxLane + 1) * 20;
-  const nodeX = row ? laneX(row.lane) : 10;
-  const centerY = rowHeight / 2;
-
-  return (
-    <svg aria-hidden className="block shrink-0" height={rowHeight} width={width}>
-      {row?.connections.map((segment, index) => (
-        <path
-          key={`${segment.type}:${segment.fromLane}:${segment.toLane}:${index}`}
-          d={graphSegmentPath(segment, rowHeight)}
-          fill="none"
-          stroke={segment.color}
-          strokeDasharray={segment.type.startsWith("merge") ? "4 3" : undefined}
-          strokeWidth="2"
-        />
-      ))}
-      {row ? (
-        row.nodeType === "head" ? (
-          <>
-            <circle cx={nodeX} cy={centerY} fill="none" r="6" stroke="currentColor" strokeWidth="2" />
-            <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
-          </>
-        ) : row.nodeType === "merge" ? (
-          <>
-            <circle cx={nodeX} cy={centerY} fill="none" r="5" stroke={row.color} strokeWidth="1.5" />
-            <circle cx={nodeX} cy={centerY} fill={row.color} r="3" />
-          </>
-        ) : (
-          <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
-        )
-      ) : null}
-    </svg>
   );
 }
 
@@ -701,36 +513,6 @@ function CommitListView({
       </div>
     </div>
   );
-}
-
-function InfiniteLoadSentinel({
-  hasNextPage,
-  isFetchingNextPage,
-  onLoadMore,
-}: {
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  onLoadMore: () => void;
-}) {
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node || !hasNextPage || isFetchingNextPage) {
-      return;
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        onLoadMore();
-      }
-    });
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, onLoadMore]);
-
-  return <div ref={sentinelRef} className="h-px w-px" aria-hidden />;
 }
 
 function FileWorkspaceTab({ worktree }: { worktree: GitWorktree }) {
@@ -1662,18 +1444,6 @@ function formatBytes(bytes: number) {
   return `${value >= 10 || exponent === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent]}`;
 }
 
-function refsByTarget(refs: GitGraphRef[]) {
-  const result = new Map<string, GitGraphRef[]>();
-
-  for (const ref of refs) {
-    const existing = result.get(ref.target) ?? [];
-    existing.push(ref);
-    result.set(ref.target, existing);
-  }
-
-  return result;
-}
-
 function combineGitHistoryPages(pages: Array<{ commits: GitCommitSummary[]; page: GitCommitGraph["page"] }>) {
   if (pages.length === 0) {
     return null;
@@ -1691,72 +1461,6 @@ function combineGitHistoryPages(pages: Array<{ commits: GitCommitSummary[]; page
       hasMore: lastPage.hasMore,
     },
   };
-}
-
-function combineGitGraphPages(pages: GitCommitGraph[]) {
-  if (pages.length === 0) {
-    return null;
-  }
-
-  const commits: GitGraphCommit[] = [];
-  const commitHashes = new Set<string>();
-  const refs = new Map<string, GitGraphRef>();
-  let layoutHints: GitGraphLayoutHints = pages[0].layoutHints;
-  let totalCount = pages[0].page.totalCount;
-  let hasMore = false;
-
-  for (const page of pages) {
-    layoutHints = page.layoutHints;
-    totalCount = page.page.totalCount;
-    hasMore = page.page.hasMore;
-
-    for (const commit of page.commits) {
-      if (!commitHashes.has(commit.hash)) {
-        commitHashes.add(commit.hash);
-        commits.push(commit);
-      }
-    }
-
-    for (const ref of page.refs) {
-      refs.set(`${ref.kind}:${ref.name}:${ref.target}`, ref);
-    }
-  }
-
-  return {
-    commits,
-    refs: [...refs.values()],
-    layoutHints,
-    page: {
-      offset: 0,
-      limit: commits.length,
-      totalCount,
-      hasMore,
-    },
-  };
-}
-
-function laneX(lane: number) {
-  return 10 + lane * 20;
-}
-
-function graphSegmentPath(segment: GitGraphSegment, rowHeight: number) {
-  const fromX = laneX(segment.fromLane);
-  const toX = laneX(segment.toLane);
-  const centerY = rowHeight / 2;
-
-  if (segment.type === "vertical") {
-    return `M ${fromX} 0 L ${toX} ${rowHeight}`;
-  }
-
-  if (segment.type === "vertical-top") {
-    return `M ${fromX} 0 L ${fromX} ${centerY}`;
-  }
-
-  if (segment.type === "vertical-bottom") {
-    return `M ${fromX} ${centerY} L ${fromX} ${rowHeight}`;
-  }
-
-  return `M ${fromX} ${centerY} C ${fromX} ${rowHeight}, ${toX} ${rowHeight}, ${toX} ${rowHeight}`;
 }
 
 function formatDate(value: string) {

@@ -22,6 +22,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@vitejs/plugin-react": "^5.0.0",
     "@yoophi/git-graph": "workspace:*",
+    "@yoophi/git-ui": "workspace:*",
     "@yoophi/markdown-annotation-core": "workspace:*",
     "@yoophi/markdown-annotation-react": "workspace:*",
     "class-variance-authority": "^0.7.1",
