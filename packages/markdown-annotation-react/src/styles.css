@@ -10,6 +10,9 @@
 @layer components {
   .markdown-viewer {
     @apply text-sm leading-7 text-foreground;
+    /* 공백 없는 긴 문자열(URL 등)이 grid track(min-w-0) 밖으로 넘쳐 미리보기
+       영역이 가로로 100%를 초과하는 것을 막는다. pre는 overflow-x로 별도 처리. */
+    overflow-wrap: anywhere;
   }
 
   .markdown-viewer h1 {
