@@ -1,5 +1,7 @@
+use git_core::GitHistoryReader;
+
 use crate::{
-    application::ports::{GitHistoryReader, RepositoryStore},
+    application::ports::RepositoryStore,
     domain::commit::{GitCommitDetail, GitCommitGraph, GitCommitHistory, GitFileDiff},
 };
 
@@ -163,8 +165,10 @@ fn normalize_branch_refs(refs: Vec<String>) -> Result<Vec<String>, String> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
+    use git_core::GitHistoryReader;
+
     use crate::{
-        application::ports::{GitHistoryReader, RepositoryStore},
+        application::ports::RepositoryStore,
         domain::{
             commit::{
                 GitCommitDetail, GitCommitFileChange, GitCommitHistory, GitCommitPage,

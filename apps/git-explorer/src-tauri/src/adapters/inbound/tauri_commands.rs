@@ -247,9 +247,9 @@ fn branch_service(
 
 fn history_service(
     app: AppHandle,
-) -> Result<HistoryService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+) -> Result<HistoryService<JsonRepositoryStore, git_core::GitCliHistoryReader>, String> {
     let store = repository_store(app)?;
-    let reader = GitCliRepositoryValidator;
+    let reader = git_core::GitCliHistoryReader;
 
     Ok(HistoryService::new(store, reader))
 }

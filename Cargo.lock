@@ -1425,6 +1425,7 @@ dependencies = [
 name = "git-explorer"
 version = "0.1.0"
 dependencies = [
+ "git-core",
  "notify",
  "serde",
  "serde_json",
