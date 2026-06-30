@@ -3,7 +3,12 @@ export {
   buildViewerAnnotationMaps,
   type ViewerAnnotationMaps,
 } from "./build-viewer-annotation-maps";
-export { getSelectionAnchors, useSelectionAnchors } from "./use-selection-anchors";
+export {
+  getSelectionAnchors,
+  getSelectionRects,
+  useSelectionAnchors,
+  type SelectionRect,
+} from "./use-selection-anchors";
 export { segmentTextByAnnotations, type TextSegment } from "./segment-text";
 export type {
   MarkdownViewerBlockNote,

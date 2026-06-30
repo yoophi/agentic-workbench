@@ -72,3 +72,31 @@ export function useSelectionAnchors(rootRef: RefObject<HTMLElement | null>) {
   const capture = useCallback(() => getSelectionAnchors(rootRef.current), [rootRef]);
   return { capture };
 }
+
+export type SelectionRect = { top: number; left: number; width: number; height: number };
+
+/**
+ * 현재 선택 영역의 사각형들을 container 기준 상대좌표로 반환한다.
+ *
+ * mouseup 직후 React 리렌더 등으로 브라우저 선택이 풀려도, 이 좌표로 오버레이를
+ * 그리면 선택 영역을 시각적으로 유지할 수 있다(MA·AW 공통 선택 하이라이트).
+ * container는 position:relative여야 하며, 오버레이는 이 좌표를 absolute로 쓴다.
+ */
+export function getSelectionRects(container: HTMLElement | null): SelectionRect[] {
+  const selection = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!container || !selection || selection.rangeCount === 0) {
+    return [];
+  }
+
+  const range = selection.getRangeAt(0);
+  const containerRect = container.getBoundingClientRect();
+
+  return Array.from(range.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      top: rect.top - containerRect.top,
+      left: rect.left - containerRect.left,
+      width: rect.width,
+      height: rect.height,
+    }));
+}

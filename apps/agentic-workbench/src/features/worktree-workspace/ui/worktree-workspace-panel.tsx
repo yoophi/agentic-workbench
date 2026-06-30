@@ -16,6 +16,7 @@ import {
   PencilLineIcon,
   RefreshCwIcon,
   SendIcon,
+  StickyNoteIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -72,6 +73,8 @@ import {
   MarkdownViewer,
   buildViewerAnnotationMaps,
   getSelectionAnchors,
+  getSelectionRects,
+  type SelectionRect,
 } from "@yoophi/markdown-annotation-react";
 import { cn } from "@/lib/utils";
 import { markdownViewerComponents } from "@/features/worktree-workspace/ui/markdown-viewer-components";
@@ -900,6 +903,7 @@ function MarkdownWorkspaceTab({
   onSendAnnotationPrompt?: (prompt: string) => void;
 }) {
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
+  const markdownColumnRef = useRef<HTMLDivElement | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [annotationsByFile, setAnnotationsByFile] = useState<Record<string, AnnotationDraft[]>>({});
@@ -908,6 +912,11 @@ function MarkdownWorkspaceTab({
   const [draftComment, setDraftComment] = useState("");
   const [selectionText, setSelectionText] = useState("");
   const [selectionAnchors, setSelectionAnchors] = useState<AnnotationAnchor[]>([]);
+  const [selectionHighlightRects, setSelectionHighlightRects] = useState<SelectionRect[]>([]);
+  const [selectionToolbarPosition, setSelectionToolbarPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
   const filesQuery = useQuery({
     queryKey: worktreeFileQueryKeys.list(worktree.path),
@@ -1105,6 +1114,8 @@ function MarkdownWorkspaceTab({
   function resetSelectionState() {
     setSelectionText("");
     setSelectionAnchors([]);
+    setSelectionHighlightRects([]);
+    setSelectionToolbarPosition(null);
     window.getSelection()?.removeAllRanges();
   }
 
@@ -1113,15 +1124,62 @@ function MarkdownWorkspaceTab({
     if (anchors.length === 0) {
       setSelectionText("");
       setSelectionAnchors([]);
+      setSelectionHighlightRects([]);
+      setSelectionToolbarPosition(null);
       return;
     }
 
     setSelectionAnchors(anchors);
     setSelectionText(anchors.map((anchor) => anchor.selectedText).filter(Boolean).join("\n"));
+
+    // 선택 영역을 markdown 컬럼 기준 상대좌표로 캡처한다. mouseup 후 브라우저
+    // 선택이 풀려도 이 좌표로 오버레이를 그려 선택 영역을 시각적으로 유지한다(MA와 동일).
+    const highlightRects = getSelectionRects(markdownColumnRef.current);
+    setSelectionHighlightRects(highlightRects);
+    const lastRect = highlightRects[highlightRects.length - 1];
+    setSelectionToolbarPosition(
+      lastRect ? { left: lastRect.left + lastRect.width + 8, top: lastRect.top } : null,
+    );
   }
 
   function scheduleCaptureSelection() {
     window.setTimeout(captureSelection, 10);
+  }
+
+  // 툴바 노트: 선택 영역을 note draft로 열어 comment를 입력받는다.
+  function requestSelectionNote() {
+    if (selectionAnchors.length === 0) {
+      return;
+    }
+    setEditingAnnotationId(null);
+    setDraftTarget({ kind: "selection", anchors: selectionAnchors, text: selectionText });
+    setDraftType("note");
+    setDraftComment("");
+    setSelectionToolbarPosition(null);
+  }
+
+  // 툴바 삭제: 선택 영역에 delete annotation을 즉시 추가한다(모달 없이).
+  function deleteSelection() {
+    if (!selectedFilePath || selectionAnchors.length === 0) {
+      return;
+    }
+    const createdAt = new Date().toISOString();
+    const groupId = selectionAnchors.length > 1 ? crypto.randomUUID() : undefined;
+    const nextAnnotations = selectionAnchors.map((anchor) =>
+      createAnnotationFromAnchor({
+        anchor,
+        comment: "",
+        createdAt,
+        fileName: selectedFilePath,
+        groupId,
+        type: "delete",
+      }),
+    );
+    setAnnotationsByFile((current) => ({
+      ...current,
+      [selectedFilePath]: [...(current[selectedFilePath] ?? []), ...nextAnnotations],
+    }));
+    resetSelectionState();
   }
 
   return (
@@ -1223,7 +1281,7 @@ function MarkdownWorkspaceTab({
               />
             ) : previewQuery.data ? (
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-                <div className="min-w-0">
+                <div ref={markdownColumnRef} className="relative min-w-0">
                   <MarkdownViewer
                     blocks={blocks}
                     components={markdownViewerComponents}
@@ -1236,6 +1294,45 @@ function MarkdownWorkspaceTab({
                     onRequestBlockComment={requestBlockComment}
                     onRequestBlockDelete={toggleBlockDelete}
                   />
+                  {selectionHighlightRects.map((rect, index) => (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute bg-yellow-200/50"
+                      key={`${rect.left}-${rect.top}-${index}`}
+                      style={{ height: rect.height, left: rect.left, top: rect.top, width: rect.width }}
+                    />
+                  ))}
+                  {selectionToolbarPosition ? (
+                    <div
+                      className="absolute z-10 flex items-center gap-1 rounded-lg border bg-popover p-1 shadow-sm"
+                      style={{ left: selectionToolbarPosition.left, top: selectionToolbarPosition.top }}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      onMouseUp={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="선택 영역 삭제"
+                        onClick={deleteSelection}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="선택 영역에 노트 추가"
+                        onClick={requestSelectionNote}
+                      >
+                        <StickyNoteIcon />
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 <aside className="grid content-start gap-3">
                   <div className="rounded-md border p-3">
