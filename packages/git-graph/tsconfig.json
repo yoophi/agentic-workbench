@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@yoophi/git-graph": ["./src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

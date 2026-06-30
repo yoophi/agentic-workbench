@@ -27,7 +27,6 @@ export type {
   GitFileDiff,
   GitGraphCommit,
   GitGraphLayoutHints,
-  GitGraphPage,
   GitGraphRef,
   GitWorktree,
   Repository,

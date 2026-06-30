@@ -27,84 +27,27 @@ export type GitBranch = {
   worktreePath?: string | null;
 };
 
-export type GitCommitSummary = {
-  hash: string;
-  message: string;
-  author: string;
-  date: string;
-};
-
-export type GitCommitHistory = {
-  commits: GitCommitSummary[];
-  page: GitCommitPage;
-};
-
-export type GitCommitPage = {
-  offset: number;
-  limit: number;
-  totalCount: number;
-  hasMore: boolean;
-};
-
-export type GitCommitGraph = {
-  commits: GitGraphCommit[];
-  refs: GitGraphRef[];
-  page: GitGraphPage;
-  layoutHints: GitGraphLayoutHints;
-};
-
-export type GitGraphCommit = {
-  hash: string;
-  shortHash: string;
-  parents: string[];
-  message: string;
-  author: string;
-  date: string;
-  isHead: boolean;
-  isMerge: boolean;
-};
-
-export type GitGraphPage = {
-  offset: number;
-  limit: number;
-  totalCount: number;
-  hasMore: boolean;
-};
-
-export type GitGraphLayoutHints = {
-  rowHeight: number;
-  maxInitialLanes: number;
-};
-
-export type GitGraphRef = {
-  name: string;
-  target: string;
-  kind: "localBranch" | "remoteBranch" | "tag";
-};
-
-export type GitCommitFileChange = {
-  path: string;
-  status: string;
-};
-
-export type GitCommitDetail = GitCommitSummary & {
-  files: GitCommitFileChange[];
-};
-
-export type GitFileDiff = {
-  commitHash: string;
-  path: string;
-  content: string;
-  isBinary: boolean;
-  isTruncated: boolean;
-};
-
-export type GitCommitQueryOptions = {
-  maxCount?: number;
-  offset?: number;
-  includedRefs?: string[];
-  excludedRefs?: string[];
-};
+// history / commit-graph / commit-detail / file-diff 데이터 타입은 @yoophi/git-graph로 통일됨.
+export type {
+  GitCommitSummary,
+  GitCommitPage,
+  GitCommitHistory,
+  GitGraphCommit,
+  GitGraphRef,
+  GitGraphLayoutHints,
+  GitCommitGraph,
+  GitCommitFileChange,
+  GitCommitDetail,
+  GitFileDiff,
+  GitCommitQueryOptions,
+} from "@yoophi/git-graph";
+import type {
+  GitCommitHistory,
+  GitCommitGraph,
+  GitCommitDetail,
+  GitFileDiff,
+  GitCommitQueryOptions,
+} from "@yoophi/git-graph";
 
 export const repositoryKeys = {
   all: ["repositories"] as const,

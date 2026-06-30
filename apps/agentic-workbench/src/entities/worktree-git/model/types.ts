@@ -1,64 +1,13 @@
-export type GitCommitSummary = {
-  hash: string;
-  message: string;
-  author: string;
-  date: string;
-};
-
-export type GitCommitPage = {
-  offset: number;
-  limit: number;
-  totalCount: number;
-  hasMore: boolean;
-};
-
-export type GitCommitHistory = {
-  commits: GitCommitSummary[];
-  page: GitCommitPage;
-};
-
-export type GitGraphCommit = {
-  hash: string;
-  shortHash: string;
-  parents: string[];
-  message: string;
-  author: string;
-  date: string;
-  isHead: boolean;
-  isMerge: boolean;
-};
-
-export type GitGraphRef = {
-  name: string;
-  target: string;
-  kind: "localBranch" | "remoteBranch" | "tag";
-};
-
-export type GitGraphLayoutHints = {
-  rowHeight: number;
-  maxInitialLanes: number;
-};
-
-export type GitCommitGraph = {
-  commits: GitGraphCommit[];
-  refs: GitGraphRef[];
-  page: GitCommitPage;
-  layoutHints: GitGraphLayoutHints;
-};
-
-export type GitCommitFileChange = {
-  path: string;
-  status: string;
-};
-
-export type GitCommitDetail = GitCommitSummary & {
-  files: GitCommitFileChange[];
-};
-
-export type GitFileDiff = {
-  commitHash: string;
-  path: string;
-  content: string;
-  isBinary: boolean;
-  isTruncated: boolean;
-};
+// Git 데이터 타입은 @yoophi/git-graph(git-explorer 정본)로 통일됨. 기존 import 경로 호환을 위해 re-export한다.
+export type {
+  GitCommitSummary,
+  GitCommitPage,
+  GitCommitHistory,
+  GitGraphCommit,
+  GitGraphRef,
+  GitGraphLayoutHints,
+  GitCommitGraph,
+  GitCommitFileChange,
+  GitCommitDetail,
+  GitFileDiff,
+} from "@yoophi/git-graph";
