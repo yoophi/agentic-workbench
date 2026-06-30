@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@yoophi/markdown-annotation-react/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,32 +1,19 @@
+import type { ElementType, MouseEvent, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ElementType } from "react";
 import { MessageSquare, Pencil, StickyNote, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type { AnnotationType } from "@/entities/annotation";
-import type { MarkdownBlock } from "@/entities/markdown-block";
-import { cn } from "@/lib/utils";
+import type { MarkdownBlock } from "@yoophi/markdown-annotation-core/types";
+import { cn } from "./cn";
+import { segmentTextByAnnotations } from "./segment-text";
+import type {
+  MarkdownViewerBlockNote,
+  MarkdownViewerComponents,
+  MarkdownViewerInlineAnnotation,
+} from "./types";
 
-export type MarkdownViewerInlineAnnotation = {
-  id: string;
-  comment: string;
-  endOffset: number;
-  startOffset: number;
-  type: AnnotationType;
-};
-
-export type MarkdownViewerBlockNote = {
-  id: string;
-  comment: string;
-};
-
-type MarkdownViewerProps = {
+export type MarkdownViewerProps = {
   blocks: MarkdownBlock[];
+  components: MarkdownViewerComponents;
   annotatedBlockIds?: Set<string>;
   deletedBlockIds?: Set<string>;
   inlineAnnotationsByBlock?: ReadonlyMap<string, MarkdownViewerInlineAnnotation[]>;
@@ -43,17 +30,20 @@ const deleteAnnotationClassName =
 function InlineAnnotationMark({
   annotation,
   children,
+  components,
   onCancelInlineAnnotation,
   onEditInlineAnnotation,
 }: {
   annotation: MarkdownViewerInlineAnnotation;
   children: string;
+  components: MarkdownViewerComponents;
   onCancelInlineAnnotation?: (annotationId: string) => void;
   onEditInlineAnnotation?: (annotationId: string) => void;
 }) {
+  const { Button, Tooltip } = components;
   const isDelete = annotation.type === "delete";
   const isNote = annotation.type === "note";
-  const handleActionMouseDown = (event: React.MouseEvent) => {
+  const handleActionMouseDown = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
   };
@@ -103,11 +93,8 @@ function InlineAnnotationMark({
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={mark} />
-      <TooltipContent className="max-w-sm">
-        <p>{annotation.comment}</p>
-      </TooltipContent>
+    <Tooltip content={<p>{annotation.comment}</p>}>
+      {mark}
     </Tooltip>
   );
 }
@@ -115,60 +102,50 @@ function InlineAnnotationMark({
 function AnnotatedText({
   annotations,
   children,
+  components,
   onCancelInlineAnnotation,
   onEditInlineAnnotation,
 }: {
   annotations: MarkdownViewerInlineAnnotation[];
   children: string;
+  components: MarkdownViewerComponents;
   onCancelInlineAnnotation?: (annotationId: string) => void;
   onEditInlineAnnotation?: (annotationId: string) => void;
 }) {
-  const sortedAnnotations = [...annotations]
-    .filter((annotation) => annotation.endOffset > annotation.startOffset)
-    .sort((a, b) => a.startOffset - b.startOffset);
-  const segments: React.ReactNode[] = [];
-  let cursor = 0;
+  const segments = segmentTextByAnnotations(children, annotations);
 
-  sortedAnnotations.forEach((annotation) => {
-    const startOffset = Math.max(0, Math.min(annotation.startOffset, children.length));
-    const endOffset = Math.max(startOffset, Math.min(annotation.endOffset, children.length));
-
-    if (startOffset < cursor || startOffset === endOffset) {
-      return;
-    }
-
-    if (cursor < startOffset) {
-      segments.push(children.slice(cursor, startOffset));
-    }
-
-    segments.push(
-      <InlineAnnotationMark
-        annotation={annotation}
-        key={annotation.id}
-        onCancelInlineAnnotation={onCancelInlineAnnotation}
-        onEditInlineAnnotation={onEditInlineAnnotation}
-      >
-        {children.slice(startOffset, endOffset)}
-      </InlineAnnotationMark>,
-    );
-    cursor = endOffset;
-  });
-
-  if (cursor < children.length) {
-    segments.push(children.slice(cursor));
-  }
-
-  return <>{segments}</>;
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === "text" ? (
+          // eslint-disable-next-line react/no-array-index-key
+          <span key={`text-${index}`}>{segment.text}</span>
+        ) : (
+          <InlineAnnotationMark
+            annotation={segment.annotation}
+            components={components}
+            key={segment.annotation.id}
+            onCancelInlineAnnotation={onCancelInlineAnnotation}
+            onEditInlineAnnotation={onEditInlineAnnotation}
+          >
+            {segment.text}
+          </InlineAnnotationMark>
+        ),
+      )}
+    </>
+  );
 }
 
 function InlineMarkdown({
   annotations = [],
   children,
+  components,
   onCancelInlineAnnotation,
   onEditInlineAnnotation,
 }: {
   annotations?: MarkdownViewerInlineAnnotation[];
   children: string;
+  components: MarkdownViewerComponents;
   onCancelInlineAnnotation?: (annotationId: string) => void;
   onEditInlineAnnotation?: (annotationId: string) => void;
 }) {
@@ -176,6 +153,7 @@ function InlineMarkdown({
     return (
       <AnnotatedText
         annotations={annotations}
+        components={components}
         onCancelInlineAnnotation={onCancelInlineAnnotation}
         onEditInlineAnnotation={onEditInlineAnnotation}
       >
@@ -200,31 +178,30 @@ function BlockShell({
   block,
   annotated,
   deleted,
-  inlineAnnotations,
   notes,
   children,
+  components,
   onRequestBlockComment,
   onRequestBlockDelete,
 }: {
   block: MarkdownBlock;
   annotated: boolean;
   deleted: boolean;
-  inlineAnnotations: MarkdownViewerInlineAnnotation[];
   notes: MarkdownViewerBlockNote[];
-  children: React.ReactNode;
-  onCancelInlineAnnotation?: (annotationId: string) => void;
-  onEditInlineAnnotation?: (annotationId: string) => void;
+  children: ReactNode;
+  components: MarkdownViewerComponents;
   onRequestBlockComment?: (block: MarkdownBlock) => void;
   onRequestBlockDelete?: (block: MarkdownBlock) => void;
 }) {
+  const { Button, Tooltip } = components;
   const hasNotes = notes.length > 0;
 
-  const handleToolbarMouseDown = (event: React.MouseEvent) => {
+  const handleToolbarMouseDown = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
   };
 
-  const handleToolbarInteraction = (event: React.MouseEvent) => {
+  const handleToolbarInteraction = (event: MouseEvent) => {
     event.stopPropagation();
   };
 
@@ -247,17 +224,22 @@ function BlockShell({
           onMouseUp={handleToolbarInteraction}
           onClick={handleToolbarInteraction}
         >
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label="Show note annotations"
-                  className="relative"
-                  size="icon-sm"
-                  type="button"
-                  variant="secondary"
-                />
-              }
+          <Tooltip
+            align="end"
+            content={
+              <div className="flex flex-col gap-2">
+                {notes.map((note) => (
+                  <p key={note.id}>{note.comment}</p>
+                ))}
+              </div>
+            }
+          >
+            <Button
+              aria-label="Show note annotations"
+              className="relative"
+              size="icon-sm"
+              type="button"
+              variant="secondary"
             >
               <StickyNote aria-hidden="true" />
               {notes.length > 1 ? (
@@ -265,14 +247,7 @@ function BlockShell({
                   {notes.length}
                 </span>
               ) : null}
-            </TooltipTrigger>
-            <TooltipContent align="end" className="max-w-sm">
-              <div className="flex flex-col gap-2">
-                {notes.map((note) => (
-                  <p key={note.id}>{note.comment}</p>
-                ))}
-              </div>
-            </TooltipContent>
+            </Button>
           </Tooltip>
         </div>
       ) : null}
@@ -287,48 +262,31 @@ function BlockShell({
         onMouseUp={handleToolbarInteraction}
         onClick={handleToolbarInteraction}
       >
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Delete block"
-                aria-pressed={deleted}
-                size="icon-sm"
-                type="button"
-                variant={deleted ? "destructive" : "ghost"}
-                onClick={() => onRequestBlockDelete?.(block)}
-              />
-            }
+        <Tooltip content={deleted ? "Cancel delete" : "Delete block"}>
+          <Button
+            aria-label="Delete block"
+            aria-pressed={deleted}
+            size="icon-sm"
+            type="button"
+            variant={deleted ? "destructive" : "ghost"}
+            onClick={() => onRequestBlockDelete?.(block)}
           >
             <Trash2 aria-hidden="true" />
-          </TooltipTrigger>
-          <TooltipContent>{deleted ? "Cancel delete" : "Delete block"}</TooltipContent>
+          </Button>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label="Comment on block"
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-                onClick={() => onRequestBlockComment?.(block)}
-              />
-            }
+        <Tooltip content="Comment on block">
+          <Button
+            aria-label="Comment on block"
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+            onClick={() => onRequestBlockComment?.(block)}
           >
             <MessageSquare aria-hidden="true" />
-          </TooltipTrigger>
-          <TooltipContent>Comment on block</TooltipContent>
+          </Button>
         </Tooltip>
       </div>
-      <div
-        className={cn(
-          "relative z-0",
-          deleted && deleteAnnotationClassName,
-        )}
-      >
-        {children}
-      </div>
+      <div className={cn("relative z-0", deleted && deleteAnnotationClassName)}>{children}</div>
     </div>
   );
 }
@@ -339,6 +297,7 @@ function MarkdownBlockRenderer({
   deleted,
   inlineAnnotations,
   notes,
+  components,
   onCancelInlineAnnotation,
   onEditInlineAnnotation,
   onRequestBlockComment,
@@ -349,77 +308,53 @@ function MarkdownBlockRenderer({
   deleted: boolean;
   inlineAnnotations: MarkdownViewerInlineAnnotation[];
   notes: MarkdownViewerBlockNote[];
+  components: MarkdownViewerComponents;
   onCancelInlineAnnotation?: (annotationId: string) => void;
   onEditInlineAnnotation?: (annotationId: string) => void;
   onRequestBlockComment?: (block: MarkdownBlock) => void;
   onRequestBlockDelete?: (block: MarkdownBlock) => void;
 }) {
+  const shellProps = {
+    annotated,
+    block,
+    components,
+    deleted,
+    notes,
+    onRequestBlockComment,
+    onRequestBlockDelete,
+  };
+
+  const inline = (
+    <InlineMarkdown
+      annotations={inlineAnnotations}
+      components={components}
+      onCancelInlineAnnotation={onCancelInlineAnnotation}
+      onEditInlineAnnotation={onEditInlineAnnotation}
+    >
+      {block.content}
+    </InlineMarkdown>
+  );
+
   switch (block.type) {
     case "heading": {
       const Tag = `h${block.level ?? 1}` as ElementType;
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
-          <Tag data-block-content>
-            <InlineMarkdown
-              annotations={inlineAnnotations}
-              onCancelInlineAnnotation={onCancelInlineAnnotation}
-              onEditInlineAnnotation={onEditInlineAnnotation}
-            >
-              {block.content}
-            </InlineMarkdown>
-          </Tag>
+        <BlockShell {...shellProps}>
+          <Tag data-block-content>{inline}</Tag>
         </BlockShell>
       );
     }
 
     case "blockquote":
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
-          <blockquote data-block-content>
-            <InlineMarkdown
-              annotations={inlineAnnotations}
-              onCancelInlineAnnotation={onCancelInlineAnnotation}
-              onEditInlineAnnotation={onEditInlineAnnotation}
-            >
-              {block.content}
-            </InlineMarkdown>
-          </blockquote>
+        <BlockShell {...shellProps}>
+          <blockquote data-block-content>{inline}</blockquote>
         </BlockShell>
       );
 
     case "list-item":
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
+        <BlockShell {...shellProps}>
           <div
             className="flex items-start gap-3"
             style={{ marginLeft: `${(block.level ?? 0) * 1.25}rem` }}
@@ -427,14 +362,11 @@ function MarkdownBlockRenderer({
             <span className="mt-0.5 text-muted-foreground">
               {block.ordered ? `${block.orderedStart ?? 1}.` : "-"}
             </span>
-            <div className={cn(block.checked && "text-muted-foreground line-through")} data-block-content>
-              <InlineMarkdown
-                annotations={inlineAnnotations}
-                onCancelInlineAnnotation={onCancelInlineAnnotation}
-                onEditInlineAnnotation={onEditInlineAnnotation}
-              >
-                {block.content}
-              </InlineMarkdown>
+            <div
+              className={cn(block.checked && "text-muted-foreground line-through")}
+              data-block-content
+            >
+              {inline}
             </div>
           </div>
         </BlockShell>
@@ -442,21 +374,12 @@ function MarkdownBlockRenderer({
 
     case "code":
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
+        <BlockShell {...shellProps}>
           <pre>
             <code data-block-content>
               <AnnotatedText
                 annotations={inlineAnnotations}
+                components={components}
                 onCancelInlineAnnotation={onCancelInlineAnnotation}
                 onEditInlineAnnotation={onEditInlineAnnotation}
               >
@@ -469,17 +392,7 @@ function MarkdownBlockRenderer({
 
     case "table":
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
+        <BlockShell {...shellProps}>
           <div data-block-content>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
           </div>
@@ -488,17 +401,7 @@ function MarkdownBlockRenderer({
 
     case "hr":
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
+        <BlockShell {...shellProps}>
           <hr />
         </BlockShell>
       );
@@ -506,26 +409,8 @@ function MarkdownBlockRenderer({
     case "paragraph":
     default:
       return (
-        <BlockShell
-          annotated={annotated}
-          block={block}
-          deleted={deleted}
-          inlineAnnotations={inlineAnnotations}
-          notes={notes}
-          onCancelInlineAnnotation={onCancelInlineAnnotation}
-          onEditInlineAnnotation={onEditInlineAnnotation}
-          onRequestBlockComment={onRequestBlockComment}
-          onRequestBlockDelete={onRequestBlockDelete}
-        >
-          <p data-block-content>
-            <InlineMarkdown
-              annotations={inlineAnnotations}
-              onCancelInlineAnnotation={onCancelInlineAnnotation}
-              onEditInlineAnnotation={onEditInlineAnnotation}
-            >
-              {block.content}
-            </InlineMarkdown>
-          </p>
+        <BlockShell {...shellProps}>
+          <p data-block-content>{inline}</p>
         </BlockShell>
       );
   }
@@ -533,6 +418,7 @@ function MarkdownBlockRenderer({
 
 export function MarkdownViewer({
   blocks,
+  components,
   annotatedBlockIds = new Set(),
   deletedBlockIds = new Set(),
   inlineAnnotationsByBlock = new Map(),
@@ -548,6 +434,7 @@ export function MarkdownViewer({
         <MarkdownBlockRenderer
           annotated={annotatedBlockIds.has(block.id)}
           block={block}
+          components={components}
           deleted={deletedBlockIds.has(block.id)}
           inlineAnnotations={inlineAnnotationsByBlock.get(block.id) ?? []}
           key={block.id}
