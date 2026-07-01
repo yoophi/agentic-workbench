@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { cn } from "./cn";
+
 export type MermaidFailureCategory =
   | "empty-source"
   | "syntax-or-parse-error"
@@ -18,8 +20,14 @@ type MermaidRenderState =
 export type MermaidDiagramProps = {
   blockId: string;
   source: string;
+  /** 고정 크기 컨테이너를 채우도록 zoom-fit 레이아웃으로 렌더한다(확대 모달 등). */
+  fit?: boolean;
   renderActions?: ReactNode;
 };
+
+function mermaidStateClassName(stateClassName: string, fit: boolean) {
+  return cn(stateClassName, fit && "markdown-viewer__mermaid--fit");
+}
 
 export function createMermaidSourceHash(source: string) {
   let hash = 0;
@@ -105,9 +113,20 @@ export function emptyMermaidFailure(): MermaidFailure {
   };
 }
 
-function MermaidFallback({ failure, source }: { failure: MermaidFailure; source: string }) {
+function MermaidFallback({
+  failure,
+  fit,
+  source,
+}: {
+  failure: MermaidFailure;
+  fit: boolean;
+  source: string;
+}) {
   return (
-    <div className="markdown-viewer__mermaid-fallback" data-mermaid-status="failed">
+    <div
+      className={mermaidStateClassName("markdown-viewer__mermaid-fallback", fit)}
+      data-mermaid-status="failed"
+    >
       <div className="markdown-viewer__mermaid-fallback-header">
         <p className="markdown-viewer__mermaid-fallback-title">Mermaid diagram failed to render</p>
         <p className="markdown-viewer__mermaid-fallback-reason">{failure.reason}</p>
@@ -120,7 +139,7 @@ function MermaidFallback({ failure, source }: { failure: MermaidFailure; source:
   );
 }
 
-export function MermaidDiagram({ blockId, renderActions, source }: MermaidDiagramProps) {
+export function MermaidDiagram({ blockId, fit = false, renderActions, source }: MermaidDiagramProps) {
   const reactId = useId();
   const baseRenderId = useMemo(() => createMermaidRenderId(reactId, blockId, source), [blockId, reactId, source]);
   const renderAttemptRef = useRef(0);
@@ -153,18 +172,17 @@ export function MermaidDiagram({ blockId, renderActions, source }: MermaidDiagra
           theme: "default",
         });
         const result = await mermaid.render(renderId, source, renderContainer);
-        renderContainer?.remove();
-        removeMermaidRenderArtifacts(renderId);
 
         if (!cancelled) {
           setState({ status: "rendered", svg: result.svg });
         }
       } catch (error) {
-        renderContainer?.remove();
-        removeMermaidRenderArtifacts(renderId);
         if (!cancelled) {
           setState({ status: "failed", failure: toMermaidFailure(error) });
         }
+      } finally {
+        renderContainer?.remove();
+        removeMermaidRenderArtifacts(renderId);
       }
     }
 
@@ -176,19 +194,26 @@ export function MermaidDiagram({ blockId, renderActions, source }: MermaidDiagra
   }, [baseRenderId, source]);
 
   if (state.status === "failed") {
-    return <MermaidFallback failure={state.failure} source={source} />;
+    return <MermaidFallback failure={state.failure} fit={fit} source={source} />;
   }
 
   if (state.status === "loading") {
     return (
-      <div className="markdown-viewer__mermaid-loading" data-mermaid-status="loading">
+      <div
+        className={mermaidStateClassName("markdown-viewer__mermaid-loading", fit)}
+        data-mermaid-status="loading"
+      >
         Rendering Mermaid diagram...
       </div>
     );
   }
 
   return (
-    <div className="markdown-viewer__mermaid" data-block-content data-mermaid-status="rendered">
+    <div
+      className={mermaidStateClassName("markdown-viewer__mermaid", fit)}
+      data-block-content
+      data-mermaid-status="rendered"
+    >
       {renderActions}
       <div dangerouslySetInnerHTML={{ __html: state.svg }} />
     </div>

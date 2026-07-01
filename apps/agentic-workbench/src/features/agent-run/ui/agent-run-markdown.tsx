@@ -72,6 +72,31 @@ type AgentRunMermaidDiagramProps = {
   source: string;
 };
 
+export function AgentRunMermaidExpandedBody({
+  blockId,
+  source,
+  zoomPercent,
+}: {
+  blockId: string;
+  source: string;
+  zoomPercent: number;
+}) {
+  return (
+    <div className="flex min-h-0 min-w-0 overflow-auto rounded-md border bg-background p-2">
+      {/* 줌은 transform 대신 박스 크기로 표현한다. transform: scale은 레이아웃
+         크기를 바꾸지 않아 100% 초과 확대 시 overflow 컨테이너가 스크롤을 만들지
+         못하고 가장자리가 잘린다. m-auto는 fit보다 작을 때 중앙 정렬, 넘칠 때
+         0으로 접혀 스크롤(팬) 가능하게 한다. */}
+      <div
+        className="m-auto flex shrink-0 items-center justify-center transition-[width,height] duration-150"
+        style={{ height: `${zoomPercent}%`, width: `${zoomPercent}%` }}
+      >
+        <MermaidDiagram fit blockId={`${blockId}-expanded`} source={source} />
+      </div>
+    </div>
+  );
+}
+
 export function AgentRunMermaidDiagram({
   blockId,
   defaultExpanded = false,
@@ -187,17 +212,11 @@ export function AgentRunMermaidDiagram({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className="min-h-0 min-w-0 overflow-hidden rounded-md border bg-background p-2">
-            <div
-              className="flex h-full min-h-0 w-full min-w-0 origin-center items-center justify-center transition-transform duration-150 [&_.markdown-viewer__mermaid]:!my-0 [&_.markdown-viewer__mermaid]:!flex [&_.markdown-viewer__mermaid]:!h-full [&_.markdown-viewer__mermaid]:!max-h-full [&_.markdown-viewer__mermaid]:!w-full [&_.markdown-viewer__mermaid]:!items-center [&_.markdown-viewer__mermaid]:!justify-center [&_.markdown-viewer__mermaid]:!overflow-hidden [&_.markdown-viewer__mermaid]:!border-0 [&_.markdown-viewer__mermaid]:!p-0 [&_.markdown-viewer__mermaid>div]:!flex [&_.markdown-viewer__mermaid>div]:!h-full [&_.markdown-viewer__mermaid>div]:!w-full [&_.markdown-viewer__mermaid>div]:!items-center [&_.markdown-viewer__mermaid>div]:!justify-center [&_.markdown-viewer__mermaid_svg]:!h-full [&_.markdown-viewer__mermaid_svg]:!max-h-full [&_.markdown-viewer__mermaid_svg]:!max-w-full [&_.markdown-viewer__mermaid_svg]:!w-full"
-              style={{ transform: `scale(${expandedZoom})` }}
-            >
-              <MermaidDiagram
-                blockId={`${debouncedPayload.blockId}-expanded`}
-                source={debouncedPayload.source}
-              />
-            </div>
-          </div>
+          <AgentRunMermaidExpandedBody
+            blockId={debouncedPayload.blockId}
+            source={debouncedPayload.source}
+            zoomPercent={expandedZoomPercent}
+          />
         </DialogContent>
       ) : null}
     </Dialog>

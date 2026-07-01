@@ -102,6 +102,36 @@
     @apply m-0 max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs;
   }
 
+  /* fit prop: 확대 모달처럼 크기가 고정된 부모를 채우는 레이아웃. 모든 상태
+     (rendered/loading/fallback)에서 기본 스타일의 max-h 스크롤 박스를 해제하고
+     부모를 가득 채운다. 기본 상태 규칙들과 같은 특이도이므로 뒤에 둔다. */
+  .markdown-viewer__mermaid--fit {
+    @apply my-0 h-full max-h-none min-h-0 w-full min-w-0;
+  }
+
+  .markdown-viewer__mermaid-loading.markdown-viewer__mermaid--fit {
+    @apply flex items-center justify-center;
+  }
+
+  /* 렌더된 다이어그램은 svg의 viewBox + preserveAspectRatio(xMidYMid meet)에
+     맡겨 비율 유지 축소·확대와 중앙 정렬을 브라우저가 처리하게 한다. */
+  .markdown-viewer__mermaid.markdown-viewer__mermaid--fit {
+    @apply flex items-center justify-center overflow-hidden border-0 p-0;
+  }
+
+  .markdown-viewer__mermaid.markdown-viewer__mermaid--fit > div {
+    @apply flex h-full min-h-0 w-full min-w-0 items-center justify-center;
+  }
+
+  /* max-width는 mermaid가 svg 루트에 인라인 스타일로 지정하므로
+     !important 없이는 이길 수 없다(인라인 max-width는 width 선언으로는
+     못 이기고 max-width로만 해제된다). */
+  .markdown-viewer__mermaid.markdown-viewer__mermaid--fit svg {
+    height: 100%;
+    max-width: 100% !important;
+    width: 100%;
+  }
+
   .markdown-viewer table {
     @apply my-4 w-full border-collapse text-sm;
   }

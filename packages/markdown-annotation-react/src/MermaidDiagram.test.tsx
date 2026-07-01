@@ -48,6 +48,22 @@ describe("MermaidDiagram", () => {
     expect(failedHtml).not.toContain("Expand");
   });
 
+  it("applies the fit modifier to loading and fallback states only when fit is enabled", () => {
+    const loadingHtml = renderToStaticMarkup(
+      <MermaidDiagram blockId="block-1" fit source={"flowchart TD\n  A --> B"} />,
+    );
+    const failedHtml = renderToStaticMarkup(<MermaidDiagram blockId="block-1" fit source={" \n "} />);
+    const defaultLoadingHtml = renderToStaticMarkup(
+      <MermaidDiagram blockId="block-1" source={"flowchart TD\n  A --> B"} />,
+    );
+
+    expect(loadingHtml).toContain('data-mermaid-status="loading"');
+    expect(failedHtml).toContain('data-mermaid-status="failed"');
+    expect(loadingHtml).toContain("markdown-viewer__mermaid--fit");
+    expect(failedHtml).toContain("markdown-viewer__mermaid--fit");
+    expect(defaultLoadingHtml).not.toContain("markdown-viewer__mermaid--fit");
+  });
+
   it("maps parser-like errors to syntax failure reasons", () => {
     expect(toMermaidFailure(new Error("Parse error on line 2"))).toEqual({
       category: "syntax-or-parse-error",
