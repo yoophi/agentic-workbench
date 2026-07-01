@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   addUserMessage,
   applyRunEvent,
+  appendPromptHistory,
   buildSteerPrompt,
+  initialPromptHistoryState,
   insertQueuedPrompt,
+  isPromptHistoryNavigationBoundary,
   moveQueuedPrompt,
+  navigatePromptHistory,
   removeQueuedPrompt,
   removeUserMessage,
   updateQueuedPrompt,
@@ -207,5 +211,249 @@ describe("run panel state", () => {
       "## Original prompt\noriginal task\n\n## Steering instruction\nsecond steer",
     );
     expect(second).not.toContain("## Steering instruction\nfirst steer");
+  });
+
+  it("records trimmed prompt history while skipping blank prompts", () => {
+    const withFirst = appendPromptHistory(initialPromptHistoryState, " first prompt ");
+    const withBlank = appendPromptHistory(withFirst, " \n ");
+    const withSecond = appendPromptHistory(withBlank, "second prompt");
+
+    expect(withBlank).toBe(withFirst);
+    expect(withSecond.entries).toEqual([
+      { text: "first prompt", sequence: 1 },
+      { text: "second prompt", sequence: 2 },
+    ]);
+  });
+
+  it("records duplicate prompt history entries in submission order", () => {
+    const withFirst = appendPromptHistory(initialPromptHistoryState, "repeat");
+    const withSecond = appendPromptHistory(withFirst, "repeat");
+
+    expect(withSecond.entries).toEqual([
+      { text: "repeat", sequence: 1 },
+      { text: "repeat", sequence: 2 },
+    ]);
+  });
+
+  it("loads the newest prompt history entry when navigating previous from idle", () => {
+    const state = ["first", "second", "third"].reduce(
+      (current, prompt) => appendPromptHistory(current, prompt),
+      initialPromptHistoryState,
+    );
+
+    const result = navigatePromptHistory({
+      state,
+      direction: "previous",
+      currentInput: "",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+
+    expect(result).toMatchObject({
+      handled: true,
+      nextInput: "third",
+      nextState: {
+        cursor: { status: "viewing", index: 2 },
+        preservedDraft: "",
+      },
+    });
+  });
+
+  it("moves backward and forward through prompt history entries", () => {
+    const state = ["first", "second", "third"].reduce(
+      (current, prompt) => appendPromptHistory(current, prompt),
+      initialPromptHistoryState,
+    );
+
+    const third = navigatePromptHistory({
+      state,
+      direction: "previous",
+      currentInput: "",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const second = navigatePromptHistory({
+      state: third.nextState,
+      direction: "previous",
+      currentInput: third.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const newer = navigatePromptHistory({
+      state: second.nextState,
+      direction: "next",
+      currentInput: second.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+
+    expect([third.nextInput, second.nextInput, newer.nextInput]).toEqual([
+      "third",
+      "second",
+      "third",
+    ]);
+  });
+
+  it("keeps oldest history entry on extra previous and restores draft past newest", () => {
+    const state = ["first", "second"].reduce(
+      (current, prompt) => appendPromptHistory(current, prompt),
+      initialPromptHistoryState,
+    );
+
+    const second = navigatePromptHistory({
+      state,
+      direction: "previous",
+      currentInput: "draft",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const first = navigatePromptHistory({
+      state: second.nextState,
+      direction: "previous",
+      currentInput: second.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const stillFirst = navigatePromptHistory({
+      state: first.nextState,
+      direction: "previous",
+      currentInput: first.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const backToSecond = navigatePromptHistory({
+      state: stillFirst.nextState,
+      direction: "next",
+      currentInput: stillFirst.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const draft = navigatePromptHistory({
+      state: backToSecond.nextState,
+      direction: "next",
+      currentInput: backToSecond.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+
+    expect(stillFirst.nextInput).toBe("first");
+    expect(draft.nextInput).toBe("draft");
+    expect(draft.nextState.cursor).toEqual({ status: "idle" });
+  });
+
+  it("preserves draft when history navigation starts and restores it on exit", () => {
+    const state = appendPromptHistory(initialPromptHistoryState, "previous prompt");
+
+    const previous = navigatePromptHistory({
+      state,
+      direction: "previous",
+      currentInput: "current draft",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const restored = navigatePromptHistory({
+      state: previous.nextState,
+      direction: "next",
+      currentInput: previous.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+
+    expect(previous.nextState.preservedDraft).toBe("current draft");
+    expect(restored.nextInput).toBe("current draft");
+    expect(restored.nextState.preservedDraft).toBeNull();
+  });
+
+  it("treats edited history text as the next draft when navigation restarts", () => {
+    const state = ["first", "second"].reduce(
+      (current, prompt) => appendPromptHistory(current, prompt),
+      initialPromptHistoryState,
+    );
+
+    const second = navigatePromptHistory({
+      state,
+      direction: "previous",
+      currentInput: "",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const restarted = navigatePromptHistory({
+      state: second.nextState,
+      direction: "previous",
+      currentInput: "edited second",
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+    const restored = navigatePromptHistory({
+      state: restarted.nextState,
+      direction: "next",
+      currentInput: restarted.nextInput,
+      isEditableBoundary: true,
+      hasModifierKey: false,
+    });
+
+    expect(restarted.nextInput).toBe("second");
+    expect(restarted.nextState.preservedDraft).toBe("edited second");
+    expect(restored.nextInput).toBe("edited second");
+  });
+
+  it("detects first-line and last-line prompt history navigation boundaries", () => {
+    const value = "first\nsecond\nthird";
+
+    expect(
+      isPromptHistoryNavigationBoundary({
+        value,
+        selectionStart: 2,
+        selectionEnd: 2,
+        direction: "previous",
+      }),
+    ).toBe(true);
+    expect(
+      isPromptHistoryNavigationBoundary({
+        value,
+        selectionStart: 8,
+        selectionEnd: 8,
+        direction: "previous",
+      }),
+    ).toBe(false);
+    expect(
+      isPromptHistoryNavigationBoundary({
+        value,
+        selectionStart: value.length,
+        selectionEnd: value.length,
+        direction: "next",
+      }),
+    ).toBe(true);
+    expect(
+      isPromptHistoryNavigationBoundary({
+        value,
+        selectionStart: 8,
+        selectionEnd: 8,
+        direction: "next",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not handle prompt history navigation with modifier keys or non-boundaries", () => {
+    const state = appendPromptHistory(initialPromptHistoryState, "previous prompt");
+
+    expect(
+      navigatePromptHistory({
+        state,
+        direction: "previous",
+        currentInput: "draft",
+        isEditableBoundary: true,
+        hasModifierKey: true,
+      }),
+    ).toEqual({ handled: false, nextInput: "draft", nextState: state });
+    expect(
+      navigatePromptHistory({
+        state,
+        direction: "previous",
+        currentInput: "draft",
+        isEditableBoundary: false,
+        hasModifierKey: false,
+      }),
+    ).toEqual({ handled: false, nextInput: "draft", nextState: state });
   });
 });

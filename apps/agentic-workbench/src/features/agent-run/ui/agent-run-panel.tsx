@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DiffViewer } from "@yoophi/git-ui";
@@ -71,14 +71,23 @@ import {
 } from "@/features/agent-run/model/goal-continuation";
 import {
   addUserMessage,
+  appendPromptHistory,
   buildSteerPrompt,
+  initialPromptHistoryState,
   insertQueuedPrompt,
+  isPromptHistoryNavigationBoundary,
   moveQueuedPrompt as reorderQueuedPrompt,
+  navigatePromptHistory,
   removeQueuedPrompt,
   removeUserMessage,
+  resetPromptHistoryCursor,
   updateQueuedPrompt,
 } from "@/features/agent-run/model/run-panel-state";
-import type { QueuedPrompt, UsageContext } from "@/features/agent-run/model/run-panel-state";
+import type {
+  PromptHistoryDirection,
+  QueuedPrompt,
+  UsageContext,
+} from "@/features/agent-run/model/run-panel-state";
 import { formatSessionLabel } from "@/features/agent-run/model/session-label";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
 import { Badge } from "@/components/ui/badge";
@@ -272,6 +281,7 @@ export function AgentRunPanel({
   const [ralphStopOnPermission, setRalphStopOnPermission] = useState(false);
   const [ralphPromptTemplate, setRalphPromptTemplate] = useState(RALPH_DEFAULT_PROMPT);
   const [prompt, setPrompt] = useState(defaultPrompt);
+  const [promptHistory, setPromptHistory] = useState(initialPromptHistoryState);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isAwaitingPromptResponse, setIsAwaitingPromptResponse] = useState(false);
@@ -583,15 +593,19 @@ export function AgentRunPanel({
     setItems((currentItems) =>
       addUserMessage(currentItems, activeRunId, nextPrompt.text),
     );
-    void sendPromptToRun(activeRunId, nextPrompt.text).catch((caughtError) => {
-      setQueuedPrompts((current) => [nextPrompt, ...current]);
-      setItems((currentItems) =>
-        removeUserMessage(currentItems, activeRunId, nextPrompt.text),
-      );
-      setDirectPrompt(previousDirectPrompt);
-      setIsAwaitingPromptResponse(false);
-      setError(String(caughtError));
-    });
+    void sendPromptToRun(activeRunId, nextPrompt.text)
+      .then(() => {
+        recordPromptHistory(nextPrompt.text);
+      })
+      .catch((caughtError) => {
+        setQueuedPrompts((current) => [nextPrompt, ...current]);
+        setItems((currentItems) =>
+          removeUserMessage(currentItems, activeRunId, nextPrompt.text),
+        );
+        setDirectPrompt(previousDirectPrompt);
+        setIsAwaitingPromptResponse(false);
+        setError(String(caughtError));
+      });
   }, [activeRunId, directPrompt, isAwaitingPromptResponse, isRunning, queuedPrompts]);
 
   useEffect(() => {
@@ -833,6 +847,7 @@ export function AgentRunPanel({
             }
           : {}),
       });
+      recordPromptHistory(displayPrompt);
       return true;
     } catch (caughtError) {
       setError(String(caughtError));
@@ -873,6 +888,48 @@ export function AgentRunPanel({
     }
 
     await startRun(nextPrompt);
+  }
+
+  function recordPromptHistory(promptText: string) {
+    setPromptHistory((current) => appendPromptHistory(current, promptText));
+  }
+
+  function updatePromptDraft(nextPrompt: string) {
+    setPrompt(nextPrompt);
+    setPromptHistory((current) => resetPromptHistoryCursor(current));
+  }
+
+  function handlePromptHistoryNavigation(
+    event: KeyboardEvent<HTMLTextAreaElement>,
+    direction: PromptHistoryDirection,
+  ) {
+    if (inputMode !== "prompt") {
+      return false;
+    }
+
+    const target = event.currentTarget;
+    const result = navigatePromptHistory({
+      state: promptHistory,
+      direction,
+      currentInput: prompt,
+      isEditableBoundary: isPromptHistoryNavigationBoundary({
+        value: target.value,
+        selectionStart: target.selectionStart,
+        selectionEnd: target.selectionEnd,
+        direction,
+      }),
+      hasModifierKey:
+        event.shiftKey || event.metaKey || event.ctrlKey || event.altKey,
+    });
+
+    if (!result.handled) {
+      return false;
+    }
+
+    event.preventDefault();
+    setPrompt(result.nextInput);
+    setPromptHistory(result.nextState);
+    return true;
   }
 
   function moveQueuedPrompt(fromIndex: number, toIndex: number) {
@@ -1016,6 +1073,7 @@ export function AgentRunPanel({
 
     try {
       await sendPromptToRun(runId, nextPrompt);
+      recordPromptHistory(nextPrompt);
     } catch (caughtError) {
       setPrompt(nextPrompt);
       setItems((currentItems) => removeUserMessage(currentItems, runId, nextPrompt));
@@ -1328,7 +1386,7 @@ export function AgentRunPanel({
         >
         <PromptInput
           value={prompt}
-          onValueChange={setPrompt}
+          onValueChange={updatePromptDraft}
           onSubmit={() => {
             if (inputMode === "prompt" && (isRunning || activeRunIdRef.current)) {
               sendPrompt();
@@ -1421,6 +1479,16 @@ export function AgentRunPanel({
               }
               className="h-full min-h-0 resize-none overflow-auto px-4"
               onKeyDown={(event) => {
+                if (event.key === "ArrowUp") {
+                  if (handlePromptHistoryNavigation(event, "previous")) {
+                    return;
+                  }
+                }
+                if (event.key === "ArrowDown") {
+                  if (handlePromptHistoryNavigation(event, "next")) {
+                    return;
+                  }
+                }
                 if (
                   event.key === "Tab" &&
                   !event.shiftKey &&

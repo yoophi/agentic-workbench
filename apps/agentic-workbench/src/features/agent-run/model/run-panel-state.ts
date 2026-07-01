@@ -23,6 +23,175 @@ export type RunEventState = {
   queuedPrompts: QueuedPrompt[];
 };
 
+export type PromptHistoryEntry = {
+  text: string;
+  sequence: number;
+};
+
+export type PromptHistoryCursor =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "viewing";
+      index: number;
+    };
+
+export type PromptHistoryState = {
+  entries: PromptHistoryEntry[];
+  cursor: PromptHistoryCursor;
+  preservedDraft: string | null;
+};
+
+export type PromptHistoryDirection = "previous" | "next";
+
+export type PromptHistoryNavigationResult = {
+  handled: boolean;
+  nextInput: string;
+  nextState: PromptHistoryState;
+};
+
+export const initialPromptHistoryState: PromptHistoryState = {
+  entries: [],
+  cursor: { status: "idle" },
+  preservedDraft: null,
+};
+
+export function appendPromptHistory(
+  state: PromptHistoryState,
+  text: string,
+): PromptHistoryState {
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    return state;
+  }
+
+  const previousEntry = state.entries[state.entries.length - 1];
+  return {
+    entries: [
+      ...state.entries,
+      {
+        text: normalizedText,
+        sequence: previousEntry ? previousEntry.sequence + 1 : 1,
+      },
+    ],
+    cursor: { status: "idle" },
+    preservedDraft: null,
+  };
+}
+
+export function resetPromptHistoryCursor(
+  state: PromptHistoryState,
+): PromptHistoryState {
+  if (state.cursor.status === "idle" && state.preservedDraft === null) {
+    return state;
+  }
+
+  return {
+    ...state,
+    cursor: { status: "idle" },
+    preservedDraft: null,
+  };
+}
+
+export function navigatePromptHistory({
+  state,
+  direction,
+  currentInput,
+  isEditableBoundary,
+  hasModifierKey,
+}: {
+  state: PromptHistoryState;
+  direction: PromptHistoryDirection;
+  currentInput: string;
+  isEditableBoundary: boolean;
+  hasModifierKey: boolean;
+}): PromptHistoryNavigationResult {
+  if (hasModifierKey || !isEditableBoundary || state.entries.length === 0) {
+    return { handled: false, nextInput: currentInput, nextState: state };
+  }
+
+  if (state.cursor.status === "idle") {
+    if (direction === "next") {
+      return { handled: false, nextInput: currentInput, nextState: state };
+    }
+
+    const nextIndex = state.entries.length - 1;
+    return {
+      handled: true,
+      nextInput: state.entries[nextIndex].text,
+      nextState: {
+        ...state,
+        cursor: { status: "viewing", index: nextIndex },
+        preservedDraft: currentInput,
+      },
+    };
+  }
+
+  const currentEntry = state.entries[state.cursor.index];
+  if (currentEntry && currentInput !== currentEntry.text) {
+    return navigatePromptHistory({
+      state: resetPromptHistoryCursor(state),
+      direction,
+      currentInput,
+      isEditableBoundary,
+      hasModifierKey,
+    });
+  }
+
+  if (direction === "previous") {
+    const nextIndex = Math.max(0, state.cursor.index - 1);
+    return {
+      handled: true,
+      nextInput: state.entries[nextIndex].text,
+      nextState: {
+        ...state,
+        cursor: { status: "viewing", index: nextIndex },
+      },
+    };
+  }
+
+  const nextIndex = state.cursor.index + 1;
+  if (nextIndex >= state.entries.length) {
+    return {
+      handled: true,
+      nextInput: state.preservedDraft ?? "",
+      nextState: {
+        ...state,
+        cursor: { status: "idle" },
+        preservedDraft: null,
+      },
+    };
+  }
+
+  return {
+    handled: true,
+    nextInput: state.entries[nextIndex].text,
+    nextState: {
+      ...state,
+      cursor: { status: "viewing", index: nextIndex },
+    },
+  };
+}
+
+export function isPromptHistoryNavigationBoundary({
+  value,
+  selectionStart,
+  selectionEnd,
+  direction,
+}: {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+  direction: PromptHistoryDirection;
+}) {
+  if (direction === "previous") {
+    return !value.slice(0, selectionStart).includes("\n");
+  }
+
+  return !value.slice(selectionEnd).includes("\n");
+}
+
 export function applyRunEvent(
   state: RunEventState,
   envelope: RunEventEnvelope,
