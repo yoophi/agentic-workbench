@@ -6,3 +6,5 @@ export { refsByTarget } from "./model/graph-render";
 export { InfiniteLoadSentinel } from "./ui/infinite-load-sentinel";
 export { HistoryGraphView, type HistoryGraphViewProps } from "./ui/history-graph-view";
 export { CommitDetailView, type CommitDetailViewProps } from "./ui/commit-detail-view";
+export { DiffViewer } from "./ui/diff-viewer";
+export { parseDiffLines, parseHunkHeader, type DiffLine } from "./model/diff";

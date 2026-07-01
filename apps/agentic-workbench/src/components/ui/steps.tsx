@@ -36,7 +36,7 @@ export const StepsTrigger = ({
 }: StepsTriggerProps) => (
   <CollapsibleTrigger
     className={cn(
-      "group text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center justify-start gap-1 text-left text-sm transition-colors",
+      "group text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-start justify-start gap-1 text-left text-sm transition-colors",
       className
     )}
     {...props}
@@ -60,7 +60,7 @@ export const StepsTrigger = ({
       <span className="min-w-0 flex-1 break-words text-left">{children}</span>
     </div>
     {(!leftIcon || !swapIconOnHover) && (
-      <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+      <ChevronDown className="mt-0.5 size-4 transition-transform group-data-[state=open]:rotate-180" />
     )}
   </CollapsibleTrigger>
 )

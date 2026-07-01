@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DiffViewer } from "@yoophi/git-ui";
 import {
   Group as ResizablePanelGroup,
   Panel as ResizablePanel,
@@ -62,6 +63,7 @@ import type {
   RunEvent,
   ThreadGoal,
   TimelineItem,
+  ToolFileChange,
 } from "@/entities/agent-run/model";
 import {
   buildGoalContinuationPrompt,
@@ -2575,37 +2577,151 @@ function LifecycleStep({ item }: { item: TimelineItem }) {
 function ToolStep({ item }: { item: TimelineItem }) {
   const tool = item.event.type === "tool" ? item.event : null;
   const status = tool?.status || (item.tone === "success" ? "completed" : item.tone === "danger" ? "failed" : "running");
-  const locations = tool?.locations ?? [];
+  const locations = uniqueToolPaths(tool?.locations ?? []);
   const toolCallId = tool?.toolCallId;
+  const fileChanges = tool?.fileChanges ?? [];
+  const shouldShowLocationRows = fileChanges.length === 0;
+  const defaultOpen = shouldOpenToolStepByDefault(item.title, fileChanges);
 
   return (
     <div>
-      <Steps className="" defaultOpen={false}>
+      <Steps className="" defaultOpen={defaultOpen}>
         <StepsTrigger leftIcon={<ToolStatusIcon status={status} />} swapIconOnHover={false}>
           <span className="flex min-w-0 w-full flex-wrap items-start gap-x-2 gap-y-1 text-left">
             <span className="min-w-0 break-words text-left">{item.title || "tool"}</span>
           </span>
         </StepsTrigger>
         <StepsContent>
-          {locations.map((path) => (
-            <StepsItem key={path}>
-              <span className="font-medium text-foreground">path</span>{" "}
-              <code className="inline-block max-w-full rounded bg-background px-1.5 py-0.5 align-bottom font-mono text-xs">
-                <EllipsisPopoverText
-                  value={path}
-                  className="font-mono text-xs"
-                  contentClassName="font-mono text-xs"
-                />
-              </code>
-            </StepsItem>
-          ))}
+          {shouldShowLocationRows &&
+            locations.map((path) => (
+              <StepsItem key={path}>
+                <span className="font-medium text-foreground">path</span>{" "}
+                <code className="inline-block max-w-full rounded bg-background px-1.5 py-0.5 align-bottom font-mono text-xs">
+                  <EllipsisPopoverText
+                    value={path}
+                    className="font-mono text-xs"
+                    contentClassName="font-mono text-xs"
+                  />
+                </code>
+              </StepsItem>
+            ))}
           {!toolCallId && locations.length === 0 && item.body && (
             <StepsItem className="whitespace-pre-wrap break-words font-mono text-xs">{item.body}</StepsItem>
+          )}
+          {fileChanges.length > 0 && (
+            <StepsItem className="block">
+              <div className="space-y-2">
+                {fileChanges.map((change) => (
+                  <ToolFileChangeView
+                    key={`${change.kind}:${change.path}:${change.oldPath ?? ""}`}
+                    change={change}
+                  />
+                ))}
+              </div>
+            </StepsItem>
           )}
         </StepsContent>
       </Steps>
     </div>
   );
+}
+
+function shouldOpenToolStepByDefault(title: string, fileChanges: ToolFileChange[]) {
+  if (fileChanges.length > 0) {
+    return true;
+  }
+  return /^edit(?:ing)?\b/i.test(title.trim());
+}
+
+function uniqueToolPaths(paths: string[]) {
+  return paths.filter((path, index, list) => list.indexOf(path) === index);
+}
+
+function ToolFileChangeView({ change }: { change: ToolFileChange }) {
+  const content = change.diff ?? change.content;
+  const fallback = toolFileChangeFallback(change);
+
+  return (
+    <details className="group rounded-md border bg-background" open>
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 text-sm">
+        <code className="min-w-0 max-w-full rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+          <EllipsisPopoverText
+            value={change.path}
+            className="font-mono text-xs"
+            contentClassName="font-mono text-xs"
+          />
+        </code>
+        {change.status !== "completed" && (
+          <Badge variant={toolFileChangeStatusVariant(change.status)} className="shrink-0">
+            {toolFileChangeStatusLabel(change.status)}
+          </Badge>
+        )}
+        {change.truncated && (
+          <Badge variant="secondary" className="shrink-0">
+            truncated
+          </Badge>
+        )}
+      </summary>
+      <div className="border-t p-2">
+        {content ? (
+          change.diff ? (
+            <DiffViewer content={content} className="max-h-72 text-[11px]" />
+          ) : (
+            <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 whitespace-pre-wrap break-words font-mono text-xs">
+              {content}
+            </pre>
+          )
+        ) : (
+          <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+            {fallback}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function toolFileChangeFallback(change: ToolFileChange) {
+  if (change.message) {
+    return change.message;
+  }
+  if (change.binary) {
+    return "Binary content cannot be displayed.";
+  }
+  return "No text diff available.";
+}
+
+function toolFileChangeKindLabel(kind: ToolFileChange["kind"]) {
+  const labels = {
+    added: "added",
+    modified: "modified",
+    deleted: "deleted",
+    renamed: "renamed",
+    unknown: "unknown",
+  } satisfies Record<ToolFileChange["kind"], string>;
+
+  return labels[kind];
+}
+
+function toolFileChangeStatusLabel(status: ToolFileChange["status"]) {
+  const labels = {
+    inProgress: "in progress",
+    completed: "completed",
+    failed: "failed",
+    unavailable: "unavailable",
+  } satisfies Record<ToolFileChange["status"], string>;
+
+  return labels[status];
+}
+
+function toolFileChangeStatusVariant(status: ToolFileChange["status"]) {
+  if (status === "failed" || status === "unavailable") {
+    return "destructive";
+  }
+  if (status === "completed") {
+    return "secondary";
+  }
+  return "outline";
 }
 
 function ToolStepGroup({ items }: { items: TimelineItem[] }) {

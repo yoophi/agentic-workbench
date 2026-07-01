@@ -26,4 +26,11 @@ describe("parseDiffLines", () => {
       { content: "No text diff available.", oldLineNumber: 0, newLineNumber: 0 },
     ]);
   });
+
+  it("keeps long diff lines as a single parsed content row", () => {
+    const longLine = `+${"x".repeat(500)}`;
+    const lines = parseDiffLines(["@@ -1 +1 @@", longLine].join("\n"));
+
+    expect(lines[1]).toMatchObject({ content: longLine, newLineNumber: 1 });
+  });
 });

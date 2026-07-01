@@ -8,6 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub const TOOL_FILE_CHANGE_TEXT_LIMIT: usize = 128 * 1024;
+
 pub fn expand_tilde(path: &str) -> PathBuf {
     if path == "~" {
         if let Some(home) = env::var_os("HOME") {
@@ -49,7 +51,7 @@ pub fn clean_tool_title(title: Option<&str>) -> String {
 }
 
 pub fn extract_locations(update: &Value) -> Vec<String> {
-    update
+    let paths = update
         .get("locations")
         .and_then(Value::as_array)
         .map(|locations| {
@@ -57,9 +59,16 @@ pub fn extract_locations(update: &Value) -> Vec<String> {
                 .iter()
                 .filter_map(|location| location.get("path").and_then(Value::as_str))
                 .map(str::to_string)
-                .collect()
+                .collect::<Vec<_>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.contains(&path) {
+            deduped.push(path);
+        }
+    }
+    deduped
 }
 
 pub fn string_param<'a>(params: &'a Value, key: &str) -> Result<&'a str> {
@@ -85,6 +94,36 @@ pub fn select_lines(content: &str, start: usize, limit: Option<usize>) -> String
         }
     }
     selected
+}
+
+pub fn truncate_for_tool_file_change(content: &str) -> (String, bool) {
+    if content.len() <= TOOL_FILE_CHANGE_TEXT_LIMIT {
+        return (content.to_string(), false);
+    }
+
+    let mut end = TOOL_FILE_CHANGE_TEXT_LIMIT;
+    while !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    (content[..end].to_string(), true)
+}
+
+pub fn simple_unified_diff(path: &str, before: Option<&str>, after: Option<&str>) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("--- a/{path}"));
+    lines.push(format!("+++ b/{path}"));
+    lines.push("@@ -1 +1 @@".to_string());
+    if let Some(before) = before {
+        for line in before.lines() {
+            lines.push(format!("-{line}"));
+        }
+    }
+    if let Some(after) = after {
+        for line in after.lines() {
+            lines.push(format!("+{line}"));
+        }
+    }
+    lines.join("\n")
 }
 
 /// macOS GUI 앱은 Finder/Launchpad에서 실행될 때 로그인 셸을 거치지 않아

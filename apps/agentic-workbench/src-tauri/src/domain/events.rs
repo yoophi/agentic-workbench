@@ -33,6 +33,8 @@ pub enum RunEvent {
         status: String,
         title: String,
         locations: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        file_changes: Vec<ToolFileChange>,
     },
     Usage {
         used: i64,
@@ -100,6 +102,39 @@ pub struct PlanEntry {
     pub content: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolFileChange {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub kind: ToolFileChangeKind,
+    pub status: ToolFileChangeStatus,
+    pub diff: Option<String>,
+    pub content: Option<String>,
+    pub binary: bool,
+    pub truncated: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolFileChangeKind {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolFileChangeStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Unavailable,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionOption {
@@ -120,6 +155,7 @@ mod tests {
             status: "completed".to_string(),
             title: "Read package.json".to_string(),
             locations: vec!["/tmp/package.json".to_string()],
+            file_changes: Vec::new(),
         };
 
         let value = serde_json::to_value(event).expect("serialize event");
@@ -132,6 +168,51 @@ mod tests {
                 "status": "completed",
                 "title": "Read package.json",
                 "locations": ["/tmp/package.json"]
+            })
+        );
+    }
+
+    #[test]
+    fn tool_event_serializes_file_changes_as_camel_case() {
+        let event = RunEvent::Tool {
+            tool_call_id: Some("call_123".to_string()),
+            status: "completed".to_string(),
+            title: "Write app.ts".to_string(),
+            locations: vec!["app.ts".to_string()],
+            file_changes: vec![super::ToolFileChange {
+                path: "app.ts".to_string(),
+                old_path: None,
+                kind: super::ToolFileChangeKind::Modified,
+                status: super::ToolFileChangeStatus::Completed,
+                diff: Some("@@ -1 +1 @@\n-old\n+new".to_string()),
+                content: None,
+                binary: false,
+                truncated: false,
+                message: None,
+            }],
+        };
+
+        let value = serde_json::to_value(event).expect("serialize event");
+
+        assert_eq!(
+            value,
+            json!({
+                "type": "tool",
+                "toolCallId": "call_123",
+                "status": "completed",
+                "title": "Write app.ts",
+                "locations": ["app.ts"],
+                "fileChanges": [{
+                    "path": "app.ts",
+                    "oldPath": null,
+                    "kind": "modified",
+                    "status": "completed",
+                    "diff": "@@ -1 +1 @@\n-old\n+new",
+                    "content": null,
+                    "binary": false,
+                    "truncated": false,
+                    "message": null
+                }]
             })
         );
     }

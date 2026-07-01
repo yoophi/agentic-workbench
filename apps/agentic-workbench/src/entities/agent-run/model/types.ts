@@ -144,6 +144,31 @@ export type AgentRun = {
   agentId: string;
 };
 
+export type ToolFileChangeKind =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "unknown";
+
+export type ToolFileChangeStatus =
+  | "inProgress"
+  | "completed"
+  | "failed"
+  | "unavailable";
+
+export type ToolFileChange = {
+  path: string;
+  oldPath: string | null;
+  kind: ToolFileChangeKind;
+  status: ToolFileChangeStatus;
+  diff: string | null;
+  content: string | null;
+  binary: boolean;
+  truncated: boolean;
+  message: string | null;
+};
+
 export type RunEventEnvelope = {
   runId: string;
   event: RunEvent;
@@ -155,7 +180,14 @@ export type RunEvent =
   | { type: "agentMessage"; text: string }
   | { type: "thought"; text: string }
   | { type: "plan"; entries: PlanEntry[] }
-  | { type: "tool"; toolCallId?: string; status: string; title: string; locations: string[] }
+  | {
+      type: "tool";
+      toolCallId?: string;
+      status: string;
+      title: string;
+      locations: string[];
+      fileChanges?: ToolFileChange[];
+    }
   | { type: "usage"; used: number; size: number }
   | {
       type: "permission";

@@ -1,6 +1,7 @@
 import type {
   AgentDescriptor,
   ThreadGoal,
+  ToolFileChange,
   WorktreeChange,
 } from "@/entities/agent-run/model/types";
 import type { GitBranch } from "@/entities/project/model/git-branch";
@@ -151,6 +152,60 @@ export const sampleAgentRunWorktreeChanges: WorktreeChange[] = [
     diff: null,
     content: null,
     truncated: false,
+  },
+];
+
+export const sampleAgentRunToolFileChanges: ToolFileChange[] = [
+  {
+    path: "apps/agentic-workbench/src/features/agent-run/ui/agent-run-panel.tsx",
+    oldPath: null,
+    kind: "modified",
+    status: "completed",
+    binary: false,
+    diff: [
+      "--- a/apps/agentic-workbench/src/features/agent-run/ui/agent-run-panel.tsx",
+      "+++ b/apps/agentic-workbench/src/features/agent-run/ui/agent-run-panel.tsx",
+      "@@ -42,6 +42,8 @@ function ToolStep() {",
+      "   const locations = tool?.locations ?? [];",
+      "+  const fileChanges = tool?.fileChanges ?? [];",
+      "+  const hasFileChanges = fileChanges.length > 0;",
+    ].join("\n"),
+    content: null,
+    truncated: false,
+    message: null,
+  },
+  {
+    path: "apps/agentic-workbench/src/entities/agent-run/model/file-change-preview-with-an-extremely-long-file-name-for-layout-validation.ts",
+    oldPath: null,
+    kind: "added",
+    status: "completed",
+    binary: false,
+    diff: null,
+    content: "export const preview = true;\n",
+    truncated: false,
+    message: null,
+  },
+  {
+    path: "assets/generated-preview.png",
+    oldPath: null,
+    kind: "modified",
+    status: "unavailable",
+    binary: true,
+    diff: null,
+    content: null,
+    truncated: false,
+    message: "Binary content cannot be displayed.",
+  },
+  {
+    path: "docs/large-session-log.md",
+    oldPath: null,
+    kind: "modified",
+    status: "completed",
+    binary: false,
+    diff: "--- a/docs/large-session-log.md\n+++ b/docs/large-session-log.md\n@@ -1 +1 @@\n-old\n+new",
+    content: null,
+    truncated: true,
+    message: null,
   },
 ];
 

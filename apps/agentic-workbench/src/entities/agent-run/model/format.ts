@@ -1,4 +1,4 @@
-import type { EventGroup, RunEvent, TimelineItem } from "./types";
+import type { EventGroup, RunEvent, TimelineItem, ToolFileChange } from "./types";
 
 export type TimelineRunEvent = Exclude<RunEvent, { type: "usage" }>;
 
@@ -67,7 +67,13 @@ function buildItem(
         ...base,
         group: "tool_call/tool_result",
         title: event.title || event.toolCallId || "tool",
-        body: [event.title, ...event.locations.map((path) => `path: ${path}`)]
+        body: [
+          event.title,
+          ...event.locations.map((path) => `path: ${path}`),
+          ...(event.fileChanges ?? []).map(
+            (change) => `${change.kind}: ${change.path}${change.truncated ? " (truncated)" : ""}`,
+          ),
+        ]
           .filter(Boolean)
           .join("\n"),
         tone: event.status === "failed" ? "danger" : event.status === "completed" ? "success" : "info",
@@ -177,10 +183,11 @@ export function appendOneTimelineItem(items: TimelineItem[], item: TimelineItem)
           : item.event.title || currentEvent?.title || item.event.title,
         locations:
           item.event.locations.length > 0
-            ? item.event.locations
+            ? uniqueStrings(item.event.locations)
             : currentEvent
-              ? currentEvent.locations
-              : item.event.locations,
+              ? uniqueStrings(currentEvent.locations)
+              : uniqueStrings(item.event.locations),
+        fileChanges: mergeToolFileChanges(currentEvent, item.event),
       };
       const nextItem = buildItem(
         {
@@ -237,6 +244,56 @@ export function appendOneTimelineItem(items: TimelineItem[], item: TimelineItem)
       event: { ...previous.event, text: `${previousText}${incomingText}` } as typeof previous.event,
     },
   ];
+}
+
+function uniqueStrings(values: string[]) {
+  return values.filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function mergeToolFileChanges(
+  current: Extract<TimelineRunEvent, { type: "tool" }> | undefined,
+  incoming: Extract<TimelineRunEvent, { type: "tool" }>,
+) {
+  const incomingChanges = incoming.fileChanges ?? [];
+  const currentChanges = current?.fileChanges ?? [];
+  const merged = currentChanges.map((change) =>
+    applyToolStatusToFileChange(change, incoming.status),
+  );
+
+  for (const incomingChange of incomingChanges) {
+    const index = merged.findIndex(
+      (change) => change.path === incomingChange.path && change.kind === incomingChange.kind,
+    );
+    if (index >= 0) {
+      merged[index] = incomingChange;
+    } else {
+      merged.push(incomingChange);
+    }
+  }
+
+  return merged.length > 0 ? merged : undefined;
+}
+
+function applyToolStatusToFileChange(change: ToolFileChange, toolStatus: string): ToolFileChange {
+  if (change.status === "failed" || change.status === "unavailable") {
+    return change;
+  }
+
+  const status = normalizeToolFileChangeStatus(toolStatus);
+  return status ? { ...change, status } : change;
+}
+
+function normalizeToolFileChangeStatus(status: string): ToolFileChange["status"] | null {
+  if (status === "completed") {
+    return "completed";
+  }
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "pending" || status === "running" || status === "in_progress" || status === "inProgress") {
+    return "inProgress";
+  }
+  return null;
 }
 
 function findMatchingToolIndex(items: TimelineItem[], event: Extract<TimelineRunEvent, { type: "tool" }>) {

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { DiffViewer } from "@yoophi/git-ui";
 import { useState } from "react";
 
 import type { Project } from "@/entities/project/model/types";
@@ -14,7 +15,11 @@ import { WorktreeChangesPanel as AgentRunWorktreeChangesPanel } from "@/features
 import { WorktreeWorkspacePanel } from "@/features/worktree-workspace/ui/worktree-workspace-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { sampleProjects, sampleWorktrees } from "@/shared/storybook/sample-data";
+import {
+  sampleAgentRunToolFileChanges,
+  sampleProjects,
+  sampleWorktrees,
+} from "@/shared/storybook/sample-data";
 
 const meta = {
   title: "Atomic Design/Organisms/Registered Components",
@@ -128,6 +133,45 @@ export const AgentRunChangedFiles: Story = {
         workingDirectory="/Users/yoophi/project/worktrees/agentic-workbench/storybook"
         isRunning={false}
       />
+    </div>
+  ),
+};
+
+export const AgentRunToolFileChanges: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Shows tool-use file changes with modified, added, binary, truncated, and long-path states.",
+      },
+    },
+  },
+  render: () => (
+    <div className="max-w-5xl space-y-3">
+      {sampleAgentRunToolFileChanges.map((change) => (
+        <Card key={`${change.kind}:${change.path}`}>
+          <CardHeader>
+            <CardTitle className="text-sm">{change.path}</CardTitle>
+            <CardDescription>
+              {change.kind} · {change.status}
+              {change.truncated ? " · truncated" : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {change.diff ? (
+              <DiffViewer content={change.diff} />
+            ) : change.content ? (
+              <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 whitespace-pre-wrap break-words font-mono text-xs">
+                {change.content}
+              </pre>
+            ) : (
+              <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+                {change.message ?? "No text diff available."}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
     </div>
   ),
 };
