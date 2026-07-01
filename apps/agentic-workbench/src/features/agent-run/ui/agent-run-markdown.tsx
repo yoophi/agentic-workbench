@@ -1,9 +1,25 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "@yoophi/markdown-annotation-react";
+import { Maximize2Icon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   createAgentRunMermaidBlockId,
   extractCodeLanguage,
@@ -15,6 +31,62 @@ import { ExternalLink } from "@/shared/ui/external-link";
 
 function codeSource(children: ReactNode) {
   return Array.isArray(children) ? children.join("") : String(children ?? "");
+}
+
+type AgentRunMermaidDiagramProps = {
+  blockId: string;
+  defaultExpanded?: boolean;
+  source: string;
+};
+
+export function AgentRunMermaidDiagram({
+  blockId,
+  defaultExpanded = false,
+  source,
+}: AgentRunMermaidDiagramProps) {
+  const [expandedOpen, setExpandedOpen] = useState(defaultExpanded);
+
+  return (
+    <Dialog open={expandedOpen} onOpenChange={setExpandedOpen}>
+      <div className="relative min-w-0 max-w-full overflow-hidden">
+        <MermaidDiagram
+          blockId={blockId}
+          source={source}
+          renderActions={
+            <div className="mb-2 flex justify-end">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        aria-label="Open Mermaid diagram in full screen"
+                        data-agent-run-mermaid-expanded-trigger="true"
+                      >
+                        <Maximize2Icon />
+                      </Button>
+                    </DialogTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Open full screen</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          }
+        />
+      </div>
+      <DialogContent className="grid h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-4 sm:max-w-[calc(100vw-2rem)]">
+        <DialogHeader className="min-w-0 pr-8">
+          <DialogTitle>Mermaid diagram</DialogTitle>
+          <DialogDescription className="sr-only">Expanded agent-run diagram view</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 min-w-0 overflow-auto rounded-md border bg-background p-3 [&_.markdown-viewer__mermaid]:my-0 [&_.markdown-viewer__mermaid]:max-h-none [&_.markdown-viewer__mermaid]:border-0 [&_.markdown-viewer__mermaid]:p-0">
+          <MermaidDiagram blockId={`${blockId}-expanded`} source={source} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function StreamingMarkdown({ content }: { content: string }) {
@@ -66,7 +138,7 @@ const components: Components = {
     if (getAgentRunCodeBlockRenderKind({ language, source }) === "mermaid-diagram") {
       return (
         <div className="my-3 min-w-0 max-w-full overflow-hidden">
-          <MermaidDiagram
+          <AgentRunMermaidDiagram
             blockId={createAgentRunMermaidBlockId({
               source,
               startLine: node.position?.start.line,

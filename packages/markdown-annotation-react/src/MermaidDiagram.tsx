@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 
 export type MermaidFailureCategory =
   | "empty-source"
@@ -18,6 +18,7 @@ type MermaidRenderState =
 export type MermaidDiagramProps = {
   blockId: string;
   source: string;
+  renderActions?: ReactNode;
 };
 
 export function createMermaidSourceHash(source: string) {
@@ -85,7 +86,7 @@ function MermaidFallback({ failure, source }: { failure: MermaidFailure; source:
   );
 }
 
-export function MermaidDiagram({ blockId, source }: MermaidDiagramProps) {
+export function MermaidDiagram({ blockId, renderActions, source }: MermaidDiagramProps) {
   const reactId = useId();
   const renderId = useMemo(() => createMermaidRenderId(reactId, blockId, source), [blockId, reactId, source]);
   const [state, setState] = useState<MermaidRenderState>(() =>
@@ -143,11 +144,9 @@ export function MermaidDiagram({ blockId, source }: MermaidDiagramProps) {
   }
 
   return (
-    <div
-      className="markdown-viewer__mermaid"
-      data-block-content
-      data-mermaid-status="rendered"
-      dangerouslySetInnerHTML={{ __html: state.svg }}
-    />
+    <div className="markdown-viewer__mermaid" data-block-content data-mermaid-status="rendered">
+      {renderActions}
+      <div dangerouslySetInnerHTML={{ __html: state.svg }} />
+    </div>
   );
 }

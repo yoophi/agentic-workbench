@@ -3,7 +3,10 @@ import { DiffViewer } from "@yoophi/git-ui";
 import { useState } from "react";
 
 import type { Project } from "@/entities/project/model/types";
-import { StreamingMarkdown } from "@/features/agent-run/ui/agent-run-markdown";
+import {
+  AgentRunMermaidDiagram,
+  StreamingMarkdown,
+} from "@/features/agent-run/ui/agent-run-markdown";
 import { AgentRunPanel } from "@/features/agent-run/ui/agent-run-panel";
 import { DeleteProjectDialog } from "@/features/project-delete/ui/delete-project-dialog";
 import { ProjectFormDialog } from "@/features/project-form/ui/project-form-dialog";
@@ -233,6 +236,25 @@ export const AgentRunLargeMermaidOutput: Story = {
           "  D --> E[Keep surrounding timeline layout stable]",
           "  E --> F[Finish]",
           "```",
+        ].join("\n")}
+      />
+    </div>
+  ),
+};
+
+export const AgentRunMermaidExpandedModal: Story = {
+  render: () => (
+    <div className="max-w-sm rounded-lg border p-4">
+      <AgentRunMermaidDiagram
+        blockId="storybook-expanded-mermaid"
+        defaultExpanded
+        source={[
+          "flowchart LR",
+          "  A[Start] --> B[Collect repository context]",
+          "  B --> C[Analyze agent run output]",
+          "  C --> D[Open full-screen modal]",
+          "  D --> E[Inspect a wider diagram]",
+          "  E --> F[Close and return]",
         ].join("\n")}
       />
     </div>

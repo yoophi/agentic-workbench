@@ -27,6 +27,26 @@ describe("MermaidDiagram", () => {
     expect(html).toContain("empty-source");
   });
 
+  it("does not render actions before the diagram reaches rendered state", () => {
+    const loadingHtml = renderToStaticMarkup(
+      <MermaidDiagram
+        blockId="block-1"
+        source={"flowchart TD\n  A --> B"}
+        renderActions={<button type="button">Expand</button>}
+      />,
+    );
+    const failedHtml = renderToStaticMarkup(
+      <MermaidDiagram
+        blockId="block-1"
+        source={" \n "}
+        renderActions={<button type="button">Expand</button>}
+      />,
+    );
+
+    expect(loadingHtml).not.toContain("Expand");
+    expect(failedHtml).not.toContain("Expand");
+  });
+
   it("maps parser-like errors to syntax failure reasons", () => {
     expect(toMermaidFailure(new Error("Parse error on line 2"))).toEqual({
       category: "syntax-or-parse-error",

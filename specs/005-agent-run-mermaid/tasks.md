@@ -135,15 +135,15 @@
 
 ### Tests for Full-screen Modal
 
-- [ ] T033 [P] [US3] Add renderer tests for opening and closing Mermaid expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded.test.tsx`
-- [ ] T034 [P] [US3] Add renderer tests that failed or empty Mermaid fallback states do not expose expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded-fallback.test.tsx`
+- [X] T033 [P] [US3] Add renderer tests for opening and closing Mermaid expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded.test.tsx`
+- [X] T034 [P] [US3] Add renderer tests that failed or empty Mermaid fallback states do not expose expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded-fallback.test.tsx`
 
 ### Implementation for Full-screen Modal
 
-- [ ] T035 [US3] Add a reusable agent-run Mermaid expanded view control using `Button`, `Tooltip`, and `Dialog` primitives in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
-- [ ] T036 [US3] Manage Mermaid expanded modal state and style the modal to use viewport-sized layout with local overflow in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
-- [ ] T037 [US3] Add an expanded Mermaid modal Storybook state that shows the trigger and open modal behavior in `apps/agentic-workbench/src/stories/organisms.stories.tsx`
-- [ ] T038 [US3] Re-run `pnpm --filter @yoophi/agentic-workbench test`, `pnpm --filter @yoophi/agentic-workbench check-types`, and `pnpm --filter @yoophi/agentic-workbench build-storybook`
+- [X] T035 [US3] Add a reusable agent-run Mermaid expanded view control using `Button`, `Tooltip`, and `Dialog` primitives in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [X] T036 [US3] Manage Mermaid expanded modal state and style the modal to use viewport-sized layout with local overflow in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [X] T037 [US3] Add an expanded Mermaid modal Storybook state that shows the trigger and open modal behavior in `apps/agentic-workbench/src/stories/organisms.stories.tsx`
+- [X] T038 [US3] Re-run `pnpm --filter @yoophi/agentic-workbench test`, `pnpm --filter @yoophi/agentic-workbench check-types`, and `pnpm --filter @yoophi/agentic-workbench build-storybook`
 
 **Checkpoint**: The expanded Mermaid modal requirement is implemented and independently verifiable.
 
