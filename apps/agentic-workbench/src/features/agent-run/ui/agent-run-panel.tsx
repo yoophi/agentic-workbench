@@ -23,8 +23,6 @@ import {
   XCircleIcon,
   XIcon,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import {
   cancelAgentRun,
@@ -89,6 +87,7 @@ import type {
   UsageContext,
 } from "@/features/agent-run/model/run-panel-state";
 import { formatSessionLabel } from "@/features/agent-run/model/session-label";
+import { StreamingMarkdown } from "@/features/agent-run/ui/agent-run-markdown";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,7 +130,6 @@ import { SystemMessage } from "@/components/ui/system-message";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { EllipsisPopoverText } from "@/shared/ui/ellipsis-popover-text";
-import { ExternalLink } from "@/shared/ui/external-link";
 
 type AgentRunPanelProps = {
   workingDirectory: string;
@@ -2877,95 +2875,4 @@ function toolStatusLabel(status: string) {
   if (status === "pending") return "In progress";
   if (status === "running") return "Running";
   return status || "Tool";
-}
-
-function StreamingMarkdown({ content }: { content: string }) {
-  return (
-    <div className="min-w-0 break-words text-sm leading-6">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          h1: ({ children }) => (
-            <h1 className="mb-2 mt-4 text-2xl font-semibold tracking-tight first:mt-0">
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="mb-2 mt-4 text-xl font-semibold tracking-tight first:mt-0">
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="mb-2 mt-3 text-lg font-semibold tracking-tight first:mt-0">
-              {children}
-            </h3>
-          ),
-          h4: ({ children }) => (
-            <h4 className="mb-2 mt-3 text-base font-semibold tracking-tight first:mt-0">
-              {children}
-            </h4>
-          ),
-          p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
-          ol: ({ children }) => <ol className="my-2 list-decimal pl-5">{children}</ol>,
-          li: ({ children }) => <li className="mt-1">{children}</li>,
-          blockquote: ({ children }) => (
-            <blockquote className="my-3 border-l-4 pl-4 text-muted-foreground">
-              {children}
-            </blockquote>
-          ),
-          code: ({ children, className }) => {
-            const isBlockCode = className?.includes("language-");
-            return (
-              <code
-                className={cn(
-                  "font-mono",
-                  isBlockCode
-                    ? "text-sm"
-                    : "rounded bg-muted px-1.5 py-0.5 text-[0.92em]",
-                  className,
-                )}
-              >
-                {children}
-              </code>
-            );
-          },
-          pre: ({ children }) => (
-            <pre className="my-3 overflow-x-auto rounded-md border bg-muted p-3">
-              {children}
-            </pre>
-          ),
-          a: ({ children, href }) => (
-            <ExternalLink href={href}>
-              {children}
-            </ExternalLink>
-          ),
-          hr: () => <hr className="my-4 border-border" />,
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto">
-              <table className="w-full border-collapse text-sm">{children}</table>
-            </div>
-          ),
-          th: ({ children }) => (
-            <th className="border bg-muted px-2 py-1 text-left font-semibold align-top">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => <td className="border px-2 py-1 align-top">{children}</td>,
-          img: ({ alt, src }) => <img className="h-auto max-w-full rounded-md" alt={alt ?? ""} src={src} />,
-        }}
-      >
-        {normalizeStreamingMarkdown(content)}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
-function normalizeStreamingMarkdown(content: string) {
-  const fenceMatches = content.match(/```/g);
-  if (fenceMatches && fenceMatches.length % 2 === 1) {
-    const suffix = content.endsWith("\n") ? "```" : "\n```";
-    return `${content}${suffix}`;
-  }
-  return content;
 }

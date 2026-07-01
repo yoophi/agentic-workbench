@@ -3,6 +3,10 @@ import { DiffViewer } from "@yoophi/git-ui";
 import { useState } from "react";
 
 import type { Project } from "@/entities/project/model/types";
+import {
+  AgentRunMermaidDiagram,
+  StreamingMarkdown,
+} from "@/features/agent-run/ui/agent-run-markdown";
 import { AgentRunPanel } from "@/features/agent-run/ui/agent-run-panel";
 import { DeleteProjectDialog } from "@/features/project-delete/ui/delete-project-dialog";
 import { ProjectFormDialog } from "@/features/project-form/ui/project-form-dialog";
@@ -179,6 +183,97 @@ export const AgentRunToolFileChanges: Story = {
 export const AgentRun: Story = {
   render: () => (
     <AgentRunPanel workingDirectory="/Users/yoophi/project/agentic-workbench" />
+  ),
+};
+
+export const AgentRunMermaidOutput: Story = {
+  render: () => (
+    <div className="max-w-3xl rounded-lg border p-4">
+      <StreamingMarkdown
+        content={[
+          "```mermaid",
+          "flowchart TD",
+          "  A[Agent starts] --> B[Plan]",
+          "  B --> C[Implement]",
+          "```",
+          "",
+          "```ts",
+          "const ordinaryCode = true;",
+          "```",
+        ].join("\n")}
+      />
+    </div>
+  ),
+};
+
+export const AgentRunMermaidFallback: Story = {
+  render: () => (
+    <div className="max-w-3xl rounded-lg border p-4">
+      <StreamingMarkdown
+        content={[
+          "```mermaid",
+          "flowchart TD",
+          "  A -->",
+          "```",
+          "",
+          "Following text remains readable.",
+        ].join("\n")}
+      />
+    </div>
+  ),
+};
+
+export const AgentRunLargeMermaidOutput: Story = {
+  render: () => (
+    <div className="max-w-sm rounded-lg border p-4">
+      <StreamingMarkdown
+        content={[
+          "```mermaid",
+          "flowchart LR",
+          "  A[Start] --> B[Collect repository context]",
+          "  B --> C[Analyze agent run output]",
+          "  C --> D[Render a very wide Mermaid diagram inside the panel]",
+          "  D --> E[Keep surrounding timeline layout stable]",
+          "  E --> F[Finish]",
+          "```",
+        ].join("\n")}
+      />
+    </div>
+  ),
+};
+
+export const AgentRunMermaidExpandedModal: Story = {
+  render: () => (
+    <div className="max-w-sm rounded-lg border p-4">
+      <AgentRunMermaidDiagram
+        blockId="storybook-expanded-mermaid"
+        defaultExpanded
+        source={[
+          "flowchart LR",
+          "  A[Start] --> B[Collect repository context]",
+          "  B --> C[Analyze agent run output]",
+          "  C --> D[Open full-screen modal]",
+          "  D --> E[Inspect a wider diagram]",
+          "  E --> F[Close and return]",
+        ].join("\n")}
+      />
+    </div>
+  ),
+};
+
+export const AgentRunStreamingMermaidOutput: Story = {
+  render: () => (
+    <div className="max-w-3xl rounded-lg border p-4">
+      <StreamingMarkdown
+        content={[
+          "Preparing diagram",
+          "",
+          "```mermaid",
+          "flowchart TD",
+          "  A[Partial stream] --> B[Still arriving]",
+        ].join("\n")}
+      />
+    </div>
   ),
 };
 
