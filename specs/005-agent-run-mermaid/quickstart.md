@@ -58,6 +58,7 @@ Expected:
 - Agent-run output with a valid Mermaid block displays a diagram.
 - Agent-run output with invalid Mermaid displays block-local fallback.
 - Agent-run output with a wide diagram remains contained.
+- A rendered Mermaid diagram can be opened in a full-screen-sized modal and closed back to agent-run output.
 - Narrow viewport inspection does not show overlap with adjacent UI.
 
 ## Manual Smoke Scenario
@@ -81,11 +82,13 @@ Expected:
 3. Confirm the agent-run output displays the block as a diagram.
 4. Prompt the agent to output malformed Mermaid and confirm only that block shows fallback/source/error state.
 5. Prompt or fixture a very wide diagram and confirm the agent-run panel layout remains stable with local overflow.
-6. Confirm a non-Mermaid code block such as `ts`, `bash`, or `json` still displays as code.
+6. Open the rendered Mermaid diagram in expanded view and confirm it appears in a viewport-sized modal with local overflow/navigation when needed.
+7. Close the modal and confirm the same agent-run output remains visible.
+8. Confirm a non-Mermaid code block such as `ts`, `bash`, or `json` still displays as code.
 
 ## Completion Criteria
 
 - Workbench tests and type checks pass.
 - Shared package checks pass if package code changed.
-- Success, fallback, streaming, ordinary code, and large diagram scenarios are verified.
+- Success, fallback, streaming, ordinary code, large diagram, and expanded modal scenarios are verified.
 - No direct app-to-app imports are introduced.

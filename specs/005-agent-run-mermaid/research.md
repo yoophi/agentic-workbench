@@ -40,6 +40,14 @@
 - SVG를 panel 너비에 맞춰 항상 축소: 넓은 diagram의 세부 내용을 읽기 어렵다.
 - agent-run panel 전체를 horizontal scroll로 전환: 한 블록 때문에 전체 timeline layout이 흔들릴 수 있다.
 
+## Decision: 전체 화면 크기 modal은 agent-run 렌더러 boundary에서 제공한다
+
+**Rationale**: Expanded view는 agent-run 출력 안에서 사용자가 특정 다이어그램을 더 크게 보는 상호작용이다. `@yoophi/markdown-annotation-react`의 shared Mermaid renderer는 diagram rendering과 fallback safety를 담당하고, modal open/close와 agent-run context 복귀는 workbench agent-run UI의 책임으로 두는 것이 app shell 결합을 shared package로 밀어 넣지 않는다. Modal은 viewport-sized layout과 local overflow를 제공해야 하며, failed/empty fallback 상태에는 expanded action을 노출하지 않는다.
+
+**Alternatives considered**:
+- shared `MermaidDiagram` 안에 modal 기능 추가: 여러 소비자에게 일괄 제공할 수 있지만 app별 modal primitive, focus/close 정책, layout 요구가 달라 shared UI 결합이 커진다.
+- agent-run 패널 안에서만 더 크게 확대: layout 안정성은 유지하기 어렵고 전체 화면 크기 modal 요구를 충족하지 못한다.
+
 ## Decision: verification은 agent-run focused tests와 package regression checks로 나눈다
 
 **Rationale**: 구현이 agent-run에만 머물면 핵심 검증은 `@yoophi/agentic-workbench` 테스트와 Storybook이다. 기존 shared helper/renderer를 수정하는 경우에는 constitution에 따라 `@yoophi/markdown-annotation-core`, `@yoophi/markdown-annotation-react`, 그리고 소비 앱 검증을 추가해야 한다.

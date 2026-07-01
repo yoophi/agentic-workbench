@@ -33,6 +33,7 @@ For each Mermaid candidate block:
 3. Wide or tall diagrams provide local overflow navigation and do not push adjacent timeline UI outside its layout.
 4. Multiple Mermaid blocks in one output render independently.
 5. Mermaid renderer loading is lazy or otherwise limited so non-Mermaid output does not pay unnecessary rendering cost.
+6. Rendered diagrams expose an action to open the diagram in a full-screen-sized modal.
 
 For ordinary code blocks:
 
@@ -59,6 +60,16 @@ If Mermaid rendering fails:
 4. The rest of the agent-run output remains readable.
 5. Later timeline items and user interactions remain available.
 
+## Expanded View Contract
+
+When a rendered Mermaid diagram is opened in expanded view:
+
+1. The app displays a modal sized to the current viewport.
+2. The diagram viewing area fits within the modal and uses the available full-screen space.
+3. If the diagram is still wider or taller than the modal viewing area, overflow is local to the modal.
+4. Closing the modal returns the user to the same agent-run output context.
+5. Expanded view is available only for successfully rendered Mermaid diagrams, not empty or failed fallback states.
+
 ## Safety Contract
 
 1. Mermaid-rendered output must use strict/safe rendering defaults.
@@ -76,3 +87,4 @@ The implementation is complete only when the following cases are covered by auto
 - streaming unmatched fence does not break the output renderer
 - completed streaming Mermaid source re-renders from latest content
 - large/wide diagram remains contained in the agent-run panel
+- rendered Mermaid diagram opens in a viewport-sized modal and closes back to agent-run output

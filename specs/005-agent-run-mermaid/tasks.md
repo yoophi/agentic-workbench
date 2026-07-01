@@ -127,6 +127,28 @@
 
 ---
 
+## Phase 7: User Story 3 Addendum - Full-screen Mermaid Modal
+
+**Goal**: Rendered Mermaid diagrams can be opened from agent-run output in a full-screen-sized modal that fits the current viewport and returns cleanly to the same output context.
+
+**Independent Test**: Render a valid wide Mermaid diagram, open it in expanded view, confirm the modal uses viewport-sized space with local overflow/navigation, then close it and confirm the original agent-run output remains visible.
+
+### Tests for Full-screen Modal
+
+- [ ] T033 [P] [US3] Add renderer tests for opening and closing Mermaid expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded.test.tsx`
+- [ ] T034 [P] [US3] Add renderer tests that failed or empty Mermaid fallback states do not expose expanded view in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded-fallback.test.tsx`
+
+### Implementation for Full-screen Modal
+
+- [ ] T035 [US3] Add a reusable agent-run Mermaid expanded view control and modal state in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [ ] T036 [US3] Style the expanded Mermaid modal to use viewport-sized layout with local overflow in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [ ] T037 [US3] Add an expanded Mermaid modal Storybook state in `apps/agentic-workbench/src/stories/organisms.stories.tsx`
+- [ ] T038 [US3] Re-run `pnpm --filter @yoophi/agentic-workbench test`, `pnpm --filter @yoophi/agentic-workbench check-types`, and `pnpm --filter @yoophi/agentic-workbench build-storybook`
+
+**Checkpoint**: The expanded Mermaid modal requirement is implemented and independently verifiable.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -137,12 +159,14 @@
 - **User Story 2 (Phase 4)**: Depends on Foundational and shared renderer availability; can be implemented after or alongside US1 but validates best after US1.
 - **User Story 3 (Phase 5)**: Depends on Foundational; can be implemented after US1 branch selection exists.
 - **Polish (Phase 6)**: Depends on desired user stories being complete.
+- **Full-screen Mermaid Modal (Phase 7)**: Depends on US3 diagram rendering and containment behavior.
 
 ### User Story Dependencies
 
 - **US1 (P1)**: No dependency on other user stories after Foundational.
 - **US2 (P2)**: Uses the same Mermaid branch as US1; independently validates fallback behavior.
 - **US3 (P3)**: Uses the same Mermaid branch as US1; independently validates streaming and containment.
+- **US3 Addendum**: Extends US3 with full-screen modal viewing for successfully rendered diagrams.
 
 ### Within Each User Story
 

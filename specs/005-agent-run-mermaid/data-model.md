@@ -41,9 +41,11 @@ Mermaid로 분기된 agent-run code block의 표시 모델이다.
 - `status`: `loading`, `rendered`, `failed`
 - `diagramOutput`: rendered 상태에서 표시되는 diagram output
 - `fallback`: failed 상태에서 표시되는 source/error state
+- `canOpenExpandedView`: rendered 상태에서 전체 화면 크기 modal을 열 수 있는지 여부
 
 **Validation rules**:
 - empty or whitespace-only source는 diagram render attempt 대신 failed/fallback 상태가 될 수 있다.
+- `canOpenExpandedView`는 rendered 상태에서만 true가 될 수 있다.
 - source 변경 시 previous rendered output을 stale 상태로 유지하지 않고 새 render lifecycle로 전환한다.
 - multiple Mermaid blocks in one output must keep independent `blockId` values.
 
@@ -52,6 +54,23 @@ Mermaid로 분기된 agent-run code block의 표시 모델이다.
 - `loading -> failed`: syntax/parser/runtime failure 또는 empty source 발생
 - `rendered -> loading`: streaming update나 source change로 source identity가 바뀜
 - `failed -> loading`: incomplete source가 후속 streaming update로 변경됨
+
+## MermaidExpandedView
+
+렌더링된 Mermaid diagram을 전체 화면 크기의 modal에서 확인하는 표현이다.
+
+**Fields**:
+- `blockId`: 확대 대상 Mermaid diagram block id
+- `source`: 확대 대상 Mermaid source text
+- `isOpen`: modal open state
+- `viewportSize`: 현재 화면 크기에 맞춘 modal viewing area
+- `overflowMode`: diagram content가 viewport보다 클 때 내부 탐색 방식
+
+**Validation rules**:
+- rendered 상태의 Mermaid diagram만 expanded view를 열 수 있다.
+- modal은 현재 viewport에 맞는 크기로 표시되어야 하며 agent-run panel layout을 변경하지 않는다.
+- modal을 닫으면 사용자는 기존 agent-run 출력 context로 돌아간다.
+- modal 내부 source/rendered content도 untrusted agent output safety constraints를 따른다.
 
 ## RenderFallback
 
