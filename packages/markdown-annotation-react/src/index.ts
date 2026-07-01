@@ -33,6 +33,7 @@ export type {
   AnnotationDialogComponents,
   DialogShellProps,
   MarkdownViewerBlockNote,
+  MarkdownViewerBlockQuickPromptAction,
   MarkdownViewerComponents,
   MarkdownViewerInlineAnnotation,
   TypeSelectOption,

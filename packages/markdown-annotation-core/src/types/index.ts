@@ -6,3 +6,20 @@ export type {
   MermaidDetectionReason,
 } from "./markdown-block";
 export type { MarkdownDocument } from "./document";
+export type {
+  AgentTarget,
+  AgentTargetAvailability,
+  BlockQuickPromptInput,
+  DocumentQuickPromptInput,
+  FormatQuickPromptOptions,
+  PromptDraft,
+  QuickPromptActionState,
+  QuickPromptBuildOptions,
+  QuickPromptContext,
+  QuickPromptDraftStatus,
+  QuickPromptLengthState,
+  QuickPromptScope,
+  QuickPromptScopeKind,
+  QuickPromptSelectionOffset,
+  SelectionQuickPromptInput,
+} from "./quick-prompt";
