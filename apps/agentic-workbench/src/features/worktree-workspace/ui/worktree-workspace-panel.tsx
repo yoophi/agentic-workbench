@@ -63,7 +63,9 @@ import {
   refsByTarget,
 } from "@yoophi/git-ui";
 import {
+  buildBlockQuickPromptContext,
   formatAnnotationsForAgent,
+  formatQuickPromptForAgent,
   isFullBlockAnnotation,
   parseMarkdownToBlocks,
 } from "@yoophi/markdown-annotation-core";
@@ -900,6 +902,26 @@ function MarkdownWorkspaceTab({
     resetSelectionState();
   }
 
+  function requestBlockQuickPrompt(block: MarkdownBlock) {
+    if (!onSendAnnotationPrompt || !selectedFilePath) {
+      return;
+    }
+
+    const context = buildBlockQuickPromptContext({
+      sourceLabel: selectedFilePath,
+      documentPath: `${worktree.path}/${selectedFilePath}`,
+      documentRevisionLabel: `${selectedFilePath}:${previewQuery.data?.content.length ?? 0}:${blocks.length}`,
+      block,
+    });
+
+    onSendAnnotationPrompt(
+      formatQuickPromptForAgent({
+        promptText: "이 Markdown 블럭을 검토하고 필요한 작업을 제안하세요.",
+        context,
+      }),
+    );
+  }
+
   const staleFileSelection = useMemo(() => {
     if (!filesQuery.data || selectedFilePath === null) {
       return null;
@@ -1253,6 +1275,15 @@ function MarkdownWorkspaceTab({
                     onEditInlineAnnotation={editInlineAnnotation}
                     onRequestBlockComment={requestBlockComment}
                     onRequestBlockDelete={toggleBlockDelete}
+                    blockQuickPromptAction={{
+                      accessibleName: "Markdown 블럭 quick prompt",
+                      tooltip: onSendAnnotationPrompt
+                        ? "이 블럭을 agent prompt로 전송"
+                        : "연결된 agent prompt 대상이 없습니다.",
+                      disabled: !onSendAnnotationPrompt,
+                      disabledReason: "연결된 agent prompt 대상이 없습니다.",
+                      onRequest: requestBlockQuickPrompt,
+                    }}
                   />
                   {selectionHighlightRects.map((rect, index) => (
                     <div

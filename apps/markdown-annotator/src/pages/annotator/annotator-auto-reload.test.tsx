@@ -5,6 +5,7 @@ import {
   findStaleMarkdownDocument,
 } from "@yoophi/workspace-auto-refresh";
 import { parseMarkdownToBlocks } from "@yoophi/markdown-annotation-core";
+import { buildDocumentQuickPromptContext } from "@yoophi/markdown-annotation-core";
 
 describe("markdown annotator auto reload integration", () => {
   it("uses the shared fallback refresh policy for active markdown documents", () => {
@@ -46,5 +47,18 @@ sequenceDiagram
       declaration: "mermaid",
       source: "sequenceDiagram\n  participant A\n  participant B\n  A->>B: Reloaded",
     });
+  });
+
+  it("keeps quick prompt context revision stable after source text changes", () => {
+    const context = buildDocumentQuickPromptContext({
+      sourceLabel: "notes.md",
+      documentRevisionLabel: "notes.md:10:1",
+      markdownText: "# Before",
+    });
+    const reloadedBlocks = parseMarkdownToBlocks("# After\n\nUpdated");
+
+    expect(context.documentRevisionLabel).toBe("notes.md:10:1");
+    expect(context.content).toBe("# Before");
+    expect(reloadedBlocks).toHaveLength(2);
   });
 });
