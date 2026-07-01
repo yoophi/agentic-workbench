@@ -4,7 +4,7 @@
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/agent-run-mermaid-rendering.md, quickstart.md
 
-**Tests**: Required. The feature spec requires representative verification for successful rendering, fallback, ordinary code preservation, streaming partial content, and large diagram containment. Constitution-required checks also apply to pure helpers and shared package regressions.
+**Tests**: Required. The feature spec requires representative verification for successful rendering, fallback, ordinary code preservation, streaming partial content, large diagram containment, and expanded modal behavior. Constitution-required checks also apply to pure helpers and shared package regressions.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -140,9 +140,9 @@
 
 ### Implementation for Full-screen Modal
 
-- [ ] T035 [US3] Add a reusable agent-run Mermaid expanded view control and modal state in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
-- [ ] T036 [US3] Style the expanded Mermaid modal to use viewport-sized layout with local overflow in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
-- [ ] T037 [US3] Add an expanded Mermaid modal Storybook state in `apps/agentic-workbench/src/stories/organisms.stories.tsx`
+- [ ] T035 [US3] Add a reusable agent-run Mermaid expanded view control using `Button`, `Tooltip`, and `Dialog` primitives in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [ ] T036 [US3] Manage Mermaid expanded modal state and style the modal to use viewport-sized layout with local overflow in `apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.tsx`
+- [ ] T037 [US3] Add an expanded Mermaid modal Storybook state that shows the trigger and open modal behavior in `apps/agentic-workbench/src/stories/organisms.stories.tsx`
 - [ ] T038 [US3] Re-run `pnpm --filter @yoophi/agentic-workbench test`, `pnpm --filter @yoophi/agentic-workbench check-types`, and `pnpm --filter @yoophi/agentic-workbench build-storybook`
 
 **Checkpoint**: The expanded Mermaid modal requirement is implemented and independently verifiable.
@@ -182,6 +182,7 @@
 - T009 and T010 can run in parallel for US1.
 - T020 and T021 can run in parallel for US3.
 - T027, T028, T029, and T030 can run in parallel during final verification when their affected files are stable.
+- T033 and T034 can run in parallel for the full-screen modal addendum.
 
 ## Parallel Example: User Story 1
 
@@ -204,6 +205,13 @@ Task: "T020 [P] [US3] Add streaming partial Mermaid normalization tests in apps/
 Task: "T021 [P] [US3] Add renderer tests for source-update rerender identity and latest Mermaid source usage in apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown.test.tsx"
 ```
 
+## Parallel Example: User Story 3 Addendum
+
+```bash
+Task: "T033 [P] [US3] Add renderer tests for opening and closing Mermaid expanded view in apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded.test.tsx"
+Task: "T034 [P] [US3] Add renderer tests that failed or empty Mermaid fallback states do not expose expanded view in apps/agentic-workbench/src/features/agent-run/ui/agent-run-markdown-expanded-fallback.test.tsx"
+```
+
 ## Implementation Strategy
 
 ### MVP First (User Story 1 Only)
@@ -219,13 +227,15 @@ Task: "T021 [P] [US3] Add renderer tests for source-update rerender identity and
 2. US1: render valid Mermaid blocks while preserving ordinary code.
 3. US2: add fallback verification and block-local containment for failures.
 4. US3: add streaming and large diagram stability.
-5. Polish: run package/app checks and quickstart scenarios.
+5. US3 Addendum: add expanded modal trigger, viewport-sized modal, fallback-state exclusion, and Storybook state.
+6. Polish: run package/app checks and quickstart scenarios.
 
 ### Parallel Team Strategy
 
 1. Complete Setup and Foundational together.
 2. Once Foundational is done, split US1 tests and implementation between model/helper and UI renderer work.
 3. US2 and US3 can then proceed in parallel because both extend the same renderer boundary but focus on different states.
+4. The full-screen modal addendum can start after US3 containment is complete; T033 and T034 can be assigned separately before T035/T036 implementation.
 
 ## Notes
 
