@@ -97,8 +97,8 @@ where
             .map(str::to_string)
             .or_else(|| self.catalog.command_for_agent(&request.agent_id))
             .ok_or_else(|| anyhow!("unknown agent: {}", request.agent_id))?;
-        let agent_argv =
-            shell_words::split(&agent_command).context("agent command cannot be parsed")?;
+        let agent_argv = shell_words::split(&agent_command)
+            .with_context(|| format!("agent command cannot be parsed: {agent_command}"))?;
         if agent_argv.is_empty() {
             bail!("agent command cannot be empty");
         }
@@ -127,7 +127,7 @@ where
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .with_context(|| format!("spawning ACP agent {}", agent_argv[0]))?;
+            .with_context(|| spawn_agent_error_context(&agent_command, &agent_argv[0]))?;
 
         let stdin = child
             .stdin
@@ -265,6 +265,10 @@ where
             stderr_task,
         })
     }
+}
+
+fn spawn_agent_error_context(agent_command: &str, program: &str) -> String {
+    format!("failed to spawn ACP agent command `{agent_command}` using program `{program}`")
 }
 
 pub struct AcpSessionSetup {
@@ -1161,7 +1165,7 @@ fn is_session_not_found(err: &RpcError) -> bool {
 mod tests {
     use super::{
         context_size_candidates, resume_session_id, run_prompt_sequence,
-        session_config_option_value, should_reissue_missing_session,
+        session_config_option_value, should_reissue_missing_session, spawn_agent_error_context,
     };
     use crate::{
         domain::{
@@ -1200,6 +1204,15 @@ mod tests {
             stop_on_permission: true,
             delay_ms: 0,
         }
+    }
+
+    #[test]
+    fn spawn_agent_error_context_names_command_and_program() {
+        let message = spawn_agent_error_context("missing-acp --flag", "missing-acp");
+
+        assert!(message.contains("failed to spawn ACP agent command"));
+        assert!(message.contains("missing-acp --flag"));
+        assert!(message.contains("missing-acp"));
     }
 
     #[test]

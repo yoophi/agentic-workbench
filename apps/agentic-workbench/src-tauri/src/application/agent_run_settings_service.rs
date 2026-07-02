@@ -1,5 +1,8 @@
 use crate::domain::{
-    agent_run_settings::{AgentRunSettings, AgentRunSettingsRalphLoop},
+    agent_run_settings::{
+        AgentCommandOverrides, AgentCommandSource, AgentRunSettings, AgentRunSettingsRalphLoop,
+        CommandResolutionResult,
+    },
     agent_run_settings_repository::AgentRunSettingsRepository,
     run::{MAX_RALPH_DELAY_MS, MAX_RALPH_ITERATIONS},
 };
@@ -35,7 +38,41 @@ fn normalize_settings(mut settings: AgentRunSettings) -> Result<AgentRunSettings
     settings.agent_id = settings.agent_id.trim().to_string();
     settings.model_id = normalize_optional_with_default(settings.model_id, "providerDefault");
     settings.ralph_loop = normalize_ralph_loop(settings.ralph_loop);
+    settings.command_overrides = normalize_command_overrides(settings.command_overrides);
     Ok(settings)
+}
+
+pub fn resolve_agent_command(
+    agent_id: &str,
+    overrides: &AgentCommandOverrides,
+    default_command: Option<String>,
+) -> Result<CommandResolutionResult, String> {
+    let agent_id = normalize_required(agent_id.to_string(), "Agent id")?;
+    let overrides = normalize_command_overrides(overrides.clone());
+
+    if let Some(command) = overrides.agent_commands.get(&agent_id) {
+        return Ok(CommandResolutionResult {
+            agent_id,
+            command: command.clone(),
+            source: AgentCommandSource::AgentOverride,
+        });
+    }
+
+    if let Some(command) = overrides.global_command {
+        return Ok(CommandResolutionResult {
+            agent_id,
+            command,
+            source: AgentCommandSource::GlobalOverride,
+        });
+    }
+
+    let command = normalize_optional(default_command.unwrap_or_default())
+        .ok_or_else(|| format!("No command is configured for agent {agent_id}."))?;
+    Ok(CommandResolutionResult {
+        agent_id,
+        command,
+        source: AgentCommandSource::DefaultCommand,
+    })
 }
 
 fn normalize_ralph_loop(mut ralph_loop: AgentRunSettingsRalphLoop) -> AgentRunSettingsRalphLoop {
@@ -45,12 +82,35 @@ fn normalize_ralph_loop(mut ralph_loop: AgentRunSettingsRalphLoop) -> AgentRunSe
     ralph_loop
 }
 
+fn normalize_command_overrides(mut overrides: AgentCommandOverrides) -> AgentCommandOverrides {
+    overrides.global_command = overrides.global_command.and_then(normalize_optional);
+    overrides.agent_commands = overrides
+        .agent_commands
+        .into_iter()
+        .filter_map(|(agent_id, command)| {
+            let agent_id = agent_id.trim().to_string();
+            normalize_optional(command).and_then(|command| {
+                if agent_id.is_empty() {
+                    None
+                } else {
+                    Some((agent_id, command))
+                }
+            })
+        })
+        .collect();
+    overrides
+}
+
 fn normalize_optional_with_default(value: String, fallback: &str) -> String {
+    normalize_optional(value).unwrap_or_else(|| fallback.to_string())
+}
+
+fn normalize_optional(value: String) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        fallback.to_string()
+        None
     } else {
-        trimmed.to_string()
+        Some(trimmed.to_string())
     }
 }
 
@@ -65,6 +125,7 @@ fn normalize_required(value: String, label: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::collections::BTreeMap;
 
     use super::*;
     use crate::domain::{
@@ -104,6 +165,7 @@ mod tests {
                 stop_on_error: true,
                 prompt_template: " continue ".into(),
             },
+            command_overrides: AgentCommandOverrides::default(),
         }
     }
 
@@ -122,6 +184,7 @@ mod tests {
         assert_eq!(saved.ralph_loop.delay_ms, MAX_RALPH_DELAY_MS);
         assert!(saved.ralph_loop.stop_on_permission);
         assert_eq!(saved.ralph_loop.prompt_template, "continue");
+        assert_eq!(saved.command_overrides, AgentCommandOverrides::default());
         assert_eq!(repository.load_settings().expect("load settings").len(), 1);
     }
 
@@ -139,6 +202,90 @@ mod tests {
             get_settings(&repository, "/repo/worktree".into())
                 .expect("lookup should succeed")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn save_settings_normalizes_command_overrides() {
+        let repository = MemoryAgentRunSettingsRepository::default();
+        let mut settings = settings("codex");
+        settings.command_overrides = AgentCommandOverrides {
+            global_command: Some("  global-acp  ".into()),
+            agent_commands: BTreeMap::from([
+                (" codex ".into(), "  codex-acp  ".into()),
+                ("claude-code".into(), "   ".into()),
+                (" ".into(), "ignored".into()),
+            ]),
+        };
+
+        let saved = save_settings(&repository, settings).expect("settings should save");
+
+        assert_eq!(
+            saved.command_overrides.global_command.as_deref(),
+            Some("global-acp")
+        );
+        assert_eq!(
+            saved.command_overrides.agent_commands,
+            BTreeMap::from([("codex".into(), "codex-acp".into())])
+        );
+    }
+
+    #[test]
+    fn missing_command_overrides_deserializes_as_empty() {
+        let value = serde_json::json!({
+            "workingDirectory": "/repo/worktree",
+            "agentId": "codex",
+            "permissionMode": "plan",
+            "modelId": "providerDefault",
+            "contextSize": "default",
+            "sessionMode": "new",
+            "ralphLoop": {
+                "enabled": false,
+                "maxIterations": 5,
+                "delayMs": 0,
+                "stopOnPermission": false,
+                "stopOnError": true,
+                "promptTemplate": ""
+            }
+        });
+
+        let settings: AgentRunSettings =
+            serde_json::from_value(value).expect("legacy settings should deserialize");
+
+        assert_eq!(settings.command_overrides, AgentCommandOverrides::default());
+    }
+
+    #[test]
+    fn resolve_agent_command_prefers_agent_override_then_global_then_default() {
+        let overrides = AgentCommandOverrides {
+            global_command: Some("global-acp".into()),
+            agent_commands: BTreeMap::from([("codex".into(), "codex-acp".into())]),
+        };
+
+        assert_eq!(
+            resolve_agent_command("codex", &overrides, Some("default-acp".into()))
+                .expect("agent override")
+                .source,
+            AgentCommandSource::AgentOverride
+        );
+        assert_eq!(
+            resolve_agent_command("claude-code", &overrides, Some("default-acp".into()))
+                .expect("global override")
+                .source,
+            AgentCommandSource::GlobalOverride
+        );
+        assert_eq!(
+            resolve_agent_command(
+                "claude-code",
+                &AgentCommandOverrides::default(),
+                Some(" default-acp ".into())
+            )
+            .expect("default command"),
+            CommandResolutionResult {
+                agent_id: "claude-code".into(),
+                command: "default-acp".into(),
+                source: AgentCommandSource::DefaultCommand,
+            }
         );
     }
 }

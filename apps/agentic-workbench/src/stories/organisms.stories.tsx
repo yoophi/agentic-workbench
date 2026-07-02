@@ -7,6 +7,8 @@ import {
   AgentRunMermaidDiagram,
   StreamingMarkdown,
 } from "@/features/agent-run/ui/agent-run-markdown";
+import { AgentCommandOverrideEditor } from "@/features/agent-command-override/ui/agent-command-override-editor";
+import type { CommandOverrideDraft } from "@/features/agent-command-override/model/command-override-form";
 import { AgentRunPanel } from "@/features/agent-run/ui/agent-run-panel";
 import { DeleteProjectDialog } from "@/features/project-delete/ui/delete-project-dialog";
 import { ProjectFormDialog } from "@/features/project-form/ui/project-form-dialog";
@@ -120,6 +122,47 @@ export const WorktreeWorkspace: Story = {
       <WorktreeWorkspacePanel worktree={sampleWorktrees[1]} />
     </div>
   ),
+};
+
+export const AgentCommandOverrideSettings: Story = {
+  render: () => {
+    const agents = [
+      {
+        id: "codex",
+        label: "Codex",
+        command: "npx -y @agentclientprotocol/codex-acp",
+      },
+      {
+        id: "claude-code",
+        label: "Claude Code",
+        command: "npx -y @agentclientprotocol/claude-agent-acp",
+      },
+    ];
+    const [draft, setDraft] = useState<CommandOverrideDraft>({
+      globalCommand:
+        "npx -y @agentclientprotocol/codex-acp --with-a-very-long-extra-argument-for-layout-validation",
+      agentCommands: {
+        codex: "custom-codex-acp",
+        "claude-code": "",
+      },
+    });
+
+    return (
+      <div className="max-w-5xl">
+        <AgentCommandOverrideEditor
+          agents={agents}
+          draft={draft}
+          savedOverrides={{
+            globalCommand: draft.globalCommand,
+            agentCommands: draft.agentCommands,
+          }}
+          saveError={draft.agentCommands["claude-code"] ? "저장하지 못했습니다." : null}
+          onDraftChange={setDraft}
+          onSave={() => undefined}
+        />
+      </div>
+    );
+  },
 };
 
 export const AgentRunChangedFiles: Story = {

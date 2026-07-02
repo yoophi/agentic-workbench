@@ -73,11 +73,13 @@ import {
   buildSteerPrompt,
   initialPromptHistoryState,
   insertQueuedPrompt,
+  isOverrideCommandFailure,
   isPromptHistoryNavigationBoundary,
   moveQueuedPrompt as reorderQueuedPrompt,
   navigatePromptHistory,
   removeQueuedPrompt,
   removeUserMessage,
+  resolveRequestAgentCommand,
   resetPromptHistoryCursor,
   updateQueuedPrompt,
 } from "@/features/agent-run/model/run-panel-state";
@@ -86,6 +88,7 @@ import type {
   QueuedPrompt,
   UsageContext,
 } from "@/features/agent-run/model/run-panel-state";
+import { APP_COMMAND_OVERRIDE_SETTINGS_KEY } from "@/features/agent-command-override/model/command-overrides";
 import { formatSessionLabel } from "@/features/agent-run/model/session-label";
 import { StreamingMarkdown } from "@/features/agent-run/ui/agent-run-markdown";
 import { SavedPromptToolbar } from "@/features/saved-prompt/ui/saved-prompt-toolbar";
@@ -137,6 +140,7 @@ type AgentRunPanelProps = {
   onRunSettled?: () => void;
   initialInputMode?: AgentInputMode;
   externalPromptRequest?: AgentPromptRequest | null;
+  onOpenSettings?: () => void;
 };
 
 type AgentInputMode = "prompt" | "ralphLoop";
@@ -261,6 +265,7 @@ export function AgentRunPanel({
   onRunSettled,
   initialInputMode = "prompt",
   externalPromptRequest = null,
+  onOpenSettings,
 }: AgentRunPanelProps) {
   const queryClient = useQueryClient();
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
@@ -317,6 +322,10 @@ export function AgentRunPanel({
   const settingsQuery = useQuery({
     queryKey: settingsQueryKey,
     queryFn: () => getAgentRunSettings(workingDirectory),
+  });
+  const appCommandSettingsQuery = useQuery({
+    queryKey: agentRunQueryKeys.settings(APP_COMMAND_OVERRIDE_SETTINGS_KEY),
+    queryFn: () => getAgentRunSettings(APP_COMMAND_OVERRIDE_SETTINGS_KEY),
   });
   const saveSettingsMutation = useMutation({
     mutationFn: saveAgentRunSettings,
@@ -818,6 +827,11 @@ export function AgentRunPanel({
     setIsAwaitingPromptResponse(true);
 
     const reuseSession = sessionMode === "reuse" && Boolean(selectedSessionId);
+    const agentCommand = resolveRequestAgentCommand({
+      agentId: selectedAgentId,
+      agents,
+      overrides: appCommandSettingsQuery.data?.commandOverrides,
+    });
 
     try {
       await startAgentRun({
@@ -825,6 +839,7 @@ export function AgentRunPanel({
         goal,
         agentId: selectedAgentId,
         cwd: workingDirectory,
+        ...(agentCommand ? { agentCommand } : {}),
         stdioBufferLimitMb: 50,
         permissionMode,
         ...(modelId !== "providerDefault" ? { modelId } : {}),
@@ -1308,7 +1323,15 @@ export function AgentRunPanel({
             <div className="flex flex-col gap-4">
               {error && (
                 <SystemMessage variant="error" fill>
-                  {error}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span>{error}</span>
+                    {onOpenSettings && isOverrideCommandFailure(error) && (
+                      <Button type="button" size="sm" variant="outline" onClick={onOpenSettings}>
+                        <SettingsIcon data-icon="inline-start" />
+                        설정 수정
+                      </Button>
+                    )}
+                  </span>
                 </SystemMessage>
               )}
 

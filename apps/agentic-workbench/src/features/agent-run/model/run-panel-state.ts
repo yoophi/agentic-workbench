@@ -3,6 +3,11 @@ import {
   toTimelineItem,
 } from "@/entities/agent-run/model";
 import type { RunEventEnvelope, TimelineItem } from "@/entities/agent-run/model";
+import type {
+  AgentCommandOverrides,
+  AgentDescriptor,
+} from "@/entities/agent-run/model/types";
+import { resolveAgentCommand } from "@/features/agent-command-override/model/command-overrides";
 
 export type QueuedPrompt = {
   id: string;
@@ -50,6 +55,32 @@ export type PromptHistoryNavigationResult = {
   nextInput: string;
   nextState: PromptHistoryState;
 };
+
+export function resolveRequestAgentCommand({
+  agentId,
+  agents,
+  overrides,
+}: {
+  agentId: string;
+  agents: AgentDescriptor[];
+  overrides: AgentCommandOverrides | null | undefined;
+}) {
+  const resolution = resolveAgentCommand({ agentId, agents, overrides });
+  if (!resolution || resolution.source === "defaultCommand") {
+    return undefined;
+  }
+  return resolution.command;
+}
+
+export function isOverrideCommandFailure(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("agent command") ||
+    normalized.includes("spawning acp agent") ||
+    normalized.includes("failed to spawn acp agent") ||
+    normalized.includes("cannot be parsed")
+  );
+}
 
 export const initialPromptHistoryState: PromptHistoryState = {
   entries: [],

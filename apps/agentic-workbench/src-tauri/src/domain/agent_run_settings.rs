@@ -1,6 +1,10 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::run::{ContextSizePreset, PermissionMode};
+
+pub const APP_COMMAND_OVERRIDE_SETTINGS_KEY: &str = "__app_agent_command_overrides__";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +30,33 @@ pub struct AgentRunSettings {
     pub session_mode: AgentRunSessionMode,
     #[serde(default)]
     pub ralph_loop: AgentRunSettingsRalphLoop,
+    #[serde(default)]
+    pub command_overrides: AgentCommandOverrides,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCommandOverrides {
+    #[serde(default)]
+    pub global_command: Option<String>,
+    #[serde(default)]
+    pub agent_commands: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentCommandSource {
+    AgentOverride,
+    GlobalOverride,
+    DefaultCommand,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandResolutionResult {
+    pub agent_id: String,
+    pub command: String,
+    pub source: AgentCommandSource,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

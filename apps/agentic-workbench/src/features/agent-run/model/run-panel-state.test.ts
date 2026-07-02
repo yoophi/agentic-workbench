@@ -7,11 +7,13 @@ import {
   buildSteerPrompt,
   initialPromptHistoryState,
   insertQueuedPrompt,
+  isOverrideCommandFailure,
   isPromptHistoryNavigationBoundary,
   moveQueuedPrompt,
   navigatePromptHistory,
   removeQueuedPrompt,
   removeUserMessage,
+  resolveRequestAgentCommand,
   updateQueuedPrompt,
 } from "./run-panel-state";
 import type { RunEventState } from "./run-panel-state";
@@ -29,6 +31,31 @@ function runningState(overrides: Partial<RunEventState> = {}): RunEventState {
 }
 
 describe("run panel state", () => {
+  it("injects only override agent commands into run requests", () => {
+    const agents = [{ id: "codex", label: "Codex", command: "codex-default" }];
+
+    expect(
+      resolveRequestAgentCommand({
+        agentId: "codex",
+        agents,
+        overrides: { agentCommands: { codex: "codex-acp" } },
+      }),
+    ).toBe("codex-acp");
+    expect(
+      resolveRequestAgentCommand({
+        agentId: "codex",
+        agents,
+        overrides: {},
+      }),
+    ).toBeUndefined();
+  });
+
+  it("detects override command failures from runner messages", () => {
+    expect(isOverrideCommandFailure("failed to spawn ACP agent: codex-acp")).toBe(true);
+    expect(isOverrideCommandFailure("agent command cannot be parsed")).toBe(true);
+    expect(isOverrideCommandFailure("ordinary provider error")).toBe(false);
+  });
+
   it("ignores events from inactive runs", () => {
     const state = runningState();
 

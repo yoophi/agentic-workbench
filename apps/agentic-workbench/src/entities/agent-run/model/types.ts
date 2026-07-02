@@ -32,6 +32,23 @@ export type AgentRunSettings = {
   contextSize: ContextSizePreset;
   sessionMode: AgentRunSessionMode;
   ralphLoop: AgentRunSettingsRalphLoop;
+  commandOverrides?: AgentCommandOverrides;
+};
+
+export type AgentCommandOverrides = {
+  globalCommand?: string | null;
+  agentCommands?: Record<string, string>;
+};
+
+export type AgentCommandSource =
+  | "agentOverride"
+  | "globalOverride"
+  | "defaultCommand";
+
+export type CommandResolutionResult = {
+  agentId: string;
+  command: string;
+  source: AgentCommandSource;
 };
 
 export type AgentRunSettingsRalphLoop = {

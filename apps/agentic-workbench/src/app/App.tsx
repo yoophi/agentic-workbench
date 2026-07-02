@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { SettingsIcon } from "lucide-react";
 import {
   Route,
   Routes,
@@ -39,12 +40,14 @@ import { ProjectDashboardPage } from "@/pages/project-dashboard/ui/project-dashb
 import { ProjectDetailPage } from "@/pages/project-detail/ui/project-detail-page";
 import { ProjectListPage } from "@/pages/project-list/ui/project-list-page";
 import { ProjectWorktreeSessionPage } from "@/pages/project-worktree-session/ui/project-worktree-session-page";
+import { SettingsPage } from "@/pages/settings/ui/settings-page";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const projectsQuery = useQuery({
     queryKey: projectQueryKeys.all,
@@ -177,6 +180,8 @@ export function App() {
     isLoading: projectsQuery.isLoading,
     errorMessage: projectsQuery.error ? String(projectsQuery.error) : null,
   });
+  const isSettingsPage = location.pathname === "/settings";
+  const returnTo = searchParams.get("returnTo");
 
   return (
     <main
@@ -191,6 +196,15 @@ export function App() {
           isWorktreeSessionPage ? "max-w-none gap-0" : "max-w-6xl gap-6",
         )}
       >
+        {!isWorktreeSessionPage && !isSettingsPage && (
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={() => navigate("/settings")}>
+              <SettingsIcon data-icon="inline-start" />
+              Settings
+            </Button>
+          </div>
+        )}
+
         {error && (
           <p className="rounded-md border bg-background px-3 py-2 text-sm text-destructive">
             {error}
@@ -241,6 +255,13 @@ export function App() {
                 projects={projects}
                 isLoading={projectsQuery.isLoading}
                 onBack={(projectId) => navigate(`/projects/${projectId}`)}
+                onOpenSettings={() =>
+                  navigate(
+                    `/settings?returnTo=${encodeURIComponent(
+                      `${location.pathname}${location.search}`,
+                    )}`,
+                  )
+                }
               />
             }
           />
@@ -251,8 +272,19 @@ export function App() {
                 projects={projects}
                 isLoading={projectsQuery.isLoading}
                 standalone
+                onOpenSettings={() =>
+                  navigate(
+                    `/settings?returnTo=${encodeURIComponent(
+                      `${location.pathname}${location.search}`,
+                    )}`,
+                  )
+                }
               />
             }
+          />
+          <Route
+            path="/settings"
+            element={<SettingsPage onBack={() => navigate(returnTo || "/")} />}
           />
         </Routes>
       </div>
@@ -335,11 +367,13 @@ function ProjectWorktreeSessionRoute({
   projects,
   isLoading,
   onBack,
+  onOpenSettings,
   standalone = false,
 }: {
   projects: Project[];
   isLoading: boolean;
   onBack?: (projectId: string) => void;
+  onOpenSettings?: () => void;
   standalone?: boolean;
 }) {
   const { projectId } = useParams();
@@ -376,6 +410,7 @@ function ProjectWorktreeSessionRoute({
         project={project}
         worktree={worktree}
         onBack={standalone || !onBack ? undefined : () => onBack(project.id)}
+        onOpenSettings={onOpenSettings}
       />
     );
   }

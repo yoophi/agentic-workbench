@@ -20,10 +20,12 @@ type ProjectWorktreeSessionPageProps = {
   project: Project;
   worktree: GitWorktree;
   onBack?: () => void;
+  onOpenSettings?: () => void;
 };
 
 export function ProjectWorktreeSessionPage({
   worktree,
+  onOpenSettings,
 }: ProjectWorktreeSessionPageProps) {
   const [workspacePromptRequest, setWorkspacePromptRequest] =
     useState<AgentPromptRequest | null>(null);
@@ -36,6 +38,7 @@ export function ProjectWorktreeSessionPage({
             <AgentRunPanel
               workingDirectory={worktree.path}
               externalPromptRequest={workspacePromptRequest}
+              onOpenSettings={onOpenSettings}
               scrollHeader={
                 <div className="sticky top-0 z-20 flex min-w-0 items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur">
                   <FolderGit2Icon className="size-4 shrink-0 text-muted-foreground" />

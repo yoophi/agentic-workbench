@@ -17,7 +17,9 @@ use crate::{
     },
     domain::{
         agent::AgentDescriptor,
-        agent_run_settings::AgentRunSettings,
+        agent_run_settings::{
+            APP_COMMAND_OVERRIDE_SETTINGS_KEY, AgentCommandSource, AgentRunSettings,
+        },
         git_branch::GitBranch,
         git_remote::GitRemote,
         git_worktree::{GitWorktree, GitWorktreeCreateDraft},
@@ -543,7 +545,28 @@ pub async fn start_agent_run(
     state: State<'_, AppState>,
     request: AgentRunRequest,
 ) -> Result<AgentRun, String> {
-    let request = normalize_run_request(request);
+    let mut request = normalize_run_request(request);
+    let catalog = ConfigurableAgentCatalog::from_env();
+    if request
+        .agent_command
+        .as_deref()
+        .is_none_or(|command| command.trim().is_empty())
+    {
+        let settings_repository = JsonAgentRunSettingsRepository::from_app(&app)?;
+        if let Some(settings) = agent_run_settings_service::get_settings(
+            &settings_repository,
+            APP_COMMAND_OVERRIDE_SETTINGS_KEY.into(),
+        )? {
+            let resolution = agent_run_settings_service::resolve_agent_command(
+                &request.agent_id,
+                &settings.command_overrides,
+                catalog.command_for_agent(&request.agent_id),
+            )?;
+            if resolution.source != AgentCommandSource::DefaultCommand {
+                request.agent_command = Some(resolution.command);
+            }
+        }
+    }
 
     let owner_window_label = window.label().to_string();
     let session_store = JsonAcpSessionStore::from_app(&app)?;
@@ -551,11 +574,7 @@ pub async fn start_agent_run(
         TauriRunEventSink::with_target(app, state.inner().clone(), owner_window_label.clone());
     let registry = state.inner().clone();
     let permissions = state.permissions();
-    let runner = AcpAgentRunner::new(
-        ConfigurableAgentCatalog::from_env(),
-        permissions,
-        Arc::new(session_store),
-    );
+    let runner = AcpAgentRunner::new(catalog, permissions, Arc::new(session_store));
 
     StartAgentRunUseCase::new(registry)
         .execute(runner, sink, request, Some(owner_window_label))
